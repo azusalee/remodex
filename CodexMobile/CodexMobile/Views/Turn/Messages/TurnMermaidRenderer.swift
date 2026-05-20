@@ -231,7 +231,7 @@ private struct MermaidBlockView: View {
         Button {
             saveSnapshot(snapshot)
         } label: {
-            RemodexIcon.image(systemName: "square.and.arrow.down")
+            Image(systemName: "square.and.arrow.down")
                 .font(AppFont.system(size: 13, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.96))
                 .padding(9)

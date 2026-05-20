@@ -475,23 +475,15 @@ function startBridge({
   });
 
   codex.onClose(() => {
-    const wasShuttingDown = isShuttingDown;
     clearRelayWatchdog();
     bridgeStatusPublisher.stopHeartbeat();
     logConnectionStatus("disconnected");
-    const lastError = wasShuttingDown
-      ? ""
-      : "Codex transport closed unexpectedly.";
     publishBridgeStatus({
-      state: wasShuttingDown ? "stopped" : "error",
+      state: "stopped",
       connectionStatus: "disconnected",
       pid: process.pid,
-      lastError,
+      lastError: "",
     });
-    if (!wasShuttingDown) {
-      console.error(`[remodex] ${lastError}`);
-      process.exitCode = 1;
-    }
     isShuttingDown = true;
     bridgeWakeAssertion.stop();
     clearReconnectTimer();
@@ -1259,33 +1251,6 @@ function startBridge({
 
     return readBridgePreferences();
   }
-
-  function stopBridge() {
-    if (isShuttingDown) {
-      return;
-    }
-
-    isShuttingDown = true;
-    bridgeWakeAssertion.stop();
-    clearReconnectTimer();
-    clearRelayWatchdog();
-    bridgeStatusPublisher.stopHeartbeat();
-    stopContextUsageWatcher();
-    rolloutLiveMirror?.stopAll();
-    desktopIpcActionFollower?.stopAll();
-    desktopRefresher.handleTransportReset();
-    failBridgeManagedCodexRequests(new Error("Bridge stopped before the request completed."));
-    forwardedRequestMethodsById.clear();
-
-    if (socket?.readyState === WebSocket.OPEN || socket?.readyState === WebSocket.CONNECTING) {
-      socket.close();
-    }
-    codex.shutdown();
-  }
-
-  return {
-    stop: stopBridge,
-  };
 }
 
 // Holds a single macOS idle-sleep assertion for as long as the bridge process stays alive.

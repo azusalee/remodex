@@ -1,8 +1,7 @@
 // FILE: TurnToolbarContent.swift
 // Purpose: Encapsulates the TurnView navigation toolbar and thread-path sheet.
 // Layer: View Component
-// Exports: TurnToolbarContent, TurnThreadNavigationContext,
-//          TurnThreadActionsMenuButton, TurnThreadActionMenuItem
+// Exports: TurnToolbarContent, TurnThreadNavigationContext
 
 import SwiftUI
 import UIKit
@@ -41,6 +40,7 @@ struct TurnToolbarContent: ToolbarContent {
     @Binding var isShowingPathSheet: Bool
 
     var body: some ToolbarContent {
+        let hasTrailingCluster = repoDiffTotals != nil || showsGitActions
         let isThreadActionLoading = isHandingOffToMac || isStartingNewChat
         let canTapMacHandoff = onTapMacHandoff != nil && !isThreadActionLoading
         let canTapWorktreeHandoff = onTapWorktreeHandoff != nil
@@ -49,123 +49,120 @@ struct TurnToolbarContent: ToolbarContent {
             && !isThreadActionLoading
         let canTapNewChat = onTapNewChat != nil && !isThreadActionLoading
         let canTapTerminal = onTapTerminal != nil
-        let threadActions = threadActionItems(
-            canTapMacHandoff: canTapMacHandoff,
-            canTapWorktreeHandoff: canTapWorktreeHandoff,
-            canTapNewChat: canTapNewChat,
-            canTapTerminal: canTapTerminal
-        )
 
-        // Keep title + path as one leading-aligned control. Splitting them into
-        // iOS 26 `.title` / `.subtitle` placements lets the system align each
-        // row independently, which makes the stack look offset.
-        if #available(iOS 26.0, *) {
-            ToolbarItem(placement: .title) {
-                titleTapTarget
+        ToolbarItem(placement: .principal) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(displayTitle)
+                    .font(AppFont.headline())
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                if let context = navigationContext {
+                    Button {
+                        HapticFeedback.shared.triggerImpactFeedback(style: .light)
+                        isShowingPathSheet = true
+                    } label: {
+                        Text(context.subtitle)
+                            .font(AppFont.mono(.caption))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
+                }
             }
-        } else {
-            ToolbarItem(placement: .principal) {
-                titleTapTarget
-            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
 
-        // Order: git actions sit closest to the title, the ellipsis thread-
-        // actions menu trails after them. Spacer goes between when both are
-        // shown so the system glass capsules don't merge into one shape.
-        if showsGitActions {
+        if showsThreadActions {
             ToolbarItem(placement: .topBarTrailing) {
-                TurnGitActionsToolbarButton(
-                    isEnabled: isGitActionEnabled,
-                    disabledActions: disabledGitActions,
-                    isRunningAction: isRunningGitAction,
-                    loadingTitle: gitActionLoadingTitle,
-                    showsDiscardRuntimeChangesAndSync: showsDiscardRuntimeChangesAndSync,
-                    gitSyncState: gitSyncState,
-                    repoDiffTotals: repoDiffTotals,
-                    isLoadingRepoDiff: isLoadingRepoDiff,
-                    onTapRepoDiff: onTapRepoDiff,
-                    onSelect: onGitAction
-                )
+                Menu {
+                    // Keeps all "branch from here" actions together behind the compact toolbar affordance.
+                    Button {
+                        HapticFeedback.shared.triggerImpactFeedback(style: .light)
+                        onTapMacHandoff?()
+                    } label: {
+                        HStack(spacing: 10) {
+                            ResizableThreadActionSymbol(systemName: "arrow.left.arrow.right", pointSize: 13)
+                            Text("Continue on Desktop App")
+                        }
+                    }
+                    .disabled(!canTapMacHandoff)
+
+                    Button {
+                        HapticFeedback.shared.triggerImpactFeedback(style: .light)
+                        onTapWorktreeHandoff?()
+                    } label: {
+                        CodexWorktreeMenuLabelRow(
+                            title: isCreatingGitWorktree ? "Preparing worktree..." : worktreeHandoffTitle,
+                            pointSize: 12,
+                            weight: .regular
+                        )
+                    }
+                    .disabled(!canTapWorktreeHandoff)
+
+                    Button {
+                        HapticFeedback.shared.triggerImpactFeedback(style: .light)
+                        onTapNewChat?()
+                    } label: {
+                        HStack(spacing: 10) {
+                            ResizableThreadActionSymbol(systemName: "plus.app", pointSize: 13)
+                            Text("New chat")
+                        }
+                    }
+                    .disabled(!canTapNewChat)
+
+                    Button {
+                        HapticFeedback.shared.triggerImpactFeedback(style: .light)
+                        onTapTerminal?()
+                    } label: {
+                        HStack(spacing: 10) {
+                            ResizableThreadActionSymbol(systemName: "terminal", pointSize: 13)
+                            Text("Open Terminal Here")
+                        }
+                    }
+                    .disabled(!canTapTerminal)
+                } label: {
+                    TurnMacHandoffToolbarLabel(isLoading: isThreadActionLoading)
+                }
+                .accessibilityLabel("Thread actions")
             }
         }
 
-        if showsGitActions, showsThreadActions {
+        if showsThreadActions, hasTrailingCluster {
             if #available(iOS 26.0, *) {
                 ToolbarSpacer(.fixed, placement: .topBarTrailing)
             }
         }
 
-        if showsThreadActions {
-            ToolbarItem(placement: .topBarTrailing) {
-                TurnThreadActionsMenuButton(
-                    isLoading: isThreadActionLoading,
-                    actions: threadActions
-                )
+        if repoDiffTotals != nil || showsGitActions {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                if let repoDiffTotals {
+                    TurnToolbarDiffTotalsLabel(
+                        totals: repoDiffTotals,
+                        isLoading: isLoadingRepoDiff,
+                        onTap: onTapRepoDiff
+                    )
+                }
+
+                if showsGitActions {
+                    TurnGitActionsToolbarButton(
+                        isEnabled: isGitActionEnabled,
+                        disabledActions: disabledGitActions,
+                        isRunningAction: isRunningGitAction,
+                        loadingTitle: gitActionLoadingTitle,
+                        showsDiscardRuntimeChangesAndSync: showsDiscardRuntimeChangesAndSync,
+                        gitSyncState: gitSyncState,
+                        onSelect: onGitAction
+                    )
+                }
             }
         }
     }
-
-    // Hides worktree-only actions for rootless Quick Chat, where there is no real branch context.
-    private func threadActionItems(
-        canTapMacHandoff: Bool,
-        canTapWorktreeHandoff: Bool,
-        canTapNewChat: Bool,
-        canTapTerminal: Bool
-    ) -> [TurnThreadActionMenuItem] {
-        var actions: [TurnThreadActionMenuItem] = [
-            TurnThreadActionMenuItem(
-                title: "Hand off to Desktop",
-                icon: .system("arrow.left.arrow.right"),
-                isEnabled: canTapMacHandoff
-            ) {
-                onTapMacHandoff?()
-            },
-        ]
-
-        if onTapWorktreeHandoff != nil {
-            actions.append(
-                TurnThreadActionMenuItem(
-                    title: isCreatingGitWorktree ? "Preparing worktree..." : worktreeHandoffTitle,
-                    icon: .worktree,
-                    isEnabled: canTapWorktreeHandoff
-                ) {
-                    onTapWorktreeHandoff?()
-                }
-            )
-        }
-
-        actions.append(contentsOf: [
-            TurnThreadActionMenuItem(
-                title: "New chat",
-                icon: .system("square.and.pencil"),
-                isEnabled: canTapNewChat
-            ) {
-                onTapNewChat?()
-            },
-            TurnThreadActionMenuItem(
-                title: "Open Terminal Here",
-                icon: .system("terminal"),
-                isEnabled: canTapTerminal
-            ) {
-                onTapTerminal?()
-            },
-        ])
-
-        return actions
-    }
-
-    @ViewBuilder
-    private var titleTapTarget: some View {
-        TurnChatToolbarTitleLabel(
-            title: displayTitle,
-            subtitle: navigationContext?.subtitle,
-            onTap: navigationContext == nil ? nil : { isShowingPathSheet = true },
-            accessibilityHint: navigationContext == nil ? nil : "Opens thread location"
-        )
-    }
 }
 
-struct TurnMacHandoffToolbarLabel: View {
+private struct TurnMacHandoffToolbarLabel: View {
     let isLoading: Bool
 
     var body: some View {
@@ -173,12 +170,11 @@ struct TurnMacHandoffToolbarLabel: View {
             if isLoading {
                 ProgressView()
                     .controlSize(.small)
+                    .frame(width: 24, height: 24)
             } else {
-                // Let the system toolbar render the ellipsis at its native
-                // size; force-fitting the wide SF `ellipsis` glyph into a
-                // square frame crushes the dots.
-                Image(systemName: "ellipsis")
+                ResizableThreadActionSymbol(systemName: "arrow.trianglehead.branch", pointSize: 14)
                     .foregroundStyle(.primary)
+                    .frame(width: 24, height: 24)
             }
         }
         .contentShape(Circle())
@@ -186,130 +182,99 @@ struct TurnMacHandoffToolbarLabel: View {
     }
 }
 
-struct TurnThreadActionsMenuButton: View {
+private struct ResizableThreadActionSymbol: View {
+    let systemName: String
+    let pointSize: CGFloat
+    var weight: UIImage.SymbolWeight = .semibold
+
+    var body: some View {
+        Image(uiImage: resizedSymbol(named: systemName, pointSize: pointSize, weight: weight))
+            .renderingMode(.template)
+            .resizable()
+            .scaledToFit()
+            .frame(width: pointSize, height: pointSize)
+    }
+
+    private func resizedSymbol(named name: String, pointSize: CGFloat, weight: UIImage.SymbolWeight) -> UIImage {
+        let config = UIImage.SymbolConfiguration(pointSize: pointSize, weight: weight)
+        guard let symbol = UIImage(systemName: name, withConfiguration: config)?
+            .withRenderingMode(.alwaysTemplate) else {
+            return UIImage()
+        }
+
+        let canvasSide = max(symbol.size.width, symbol.size.height)
+        let canvasSize = CGSize(width: canvasSide, height: canvasSide)
+        let renderer = UIGraphicsImageRenderer(size: canvasSize)
+        let scale = min(canvasSize.width / symbol.size.width, canvasSize.height / symbol.size.height)
+        let scaledSize = CGSize(width: symbol.size.width * scale, height: symbol.size.height * scale)
+        let origin = CGPoint(
+            x: (canvasSize.width - scaledSize.width) / 2,
+            y: (canvasSize.height - scaledSize.height) / 2
+        )
+
+        return renderer.image { _ in
+            symbol.draw(in: CGRect(origin: origin, size: scaledSize))
+        }
+        .withRenderingMode(.alwaysTemplate)
+    }
+}
+
+private struct TurnToolbarDiffTotalsLabel: View {
+    let totals: GitDiffTotals
     let isLoading: Bool
-    var isEnabled: Bool = true
-    let actions: [TurnThreadActionMenuItem]
+    let onTap: (() -> Void)?
+
+    // Keeps small diff totals tappable without forcing large-count pills into a fixed width.
+    private let minPillWidth: CGFloat = 50
 
     var body: some View {
         Group {
-            if isLoading {
-                TurnMacHandoffToolbarLabel(isLoading: true)
+            if let onTap {
+                Button {
+                    HapticFeedback.shared.triggerImpactFeedback(style: .light)
+                    onTap()
+                } label: {
+                    labelContent
+                }
+                .buttonStyle(.plain)
+                .disabled(isLoading)
             } else {
-                UIKitThreadActionsToolbarButton(
-                    isEnabled: isEnabled,
-                    actions: actions,
-                    triggerImage: Self.triggerImage
-                )
-                .frame(width: Self.triggerIconSize, height: Self.triggerIconSize)
-                .padding(.vertical, 4)
-                .frame(minWidth: Self.minToolbarButtonSize, minHeight: Self.minToolbarButtonSize)
-                .contentShape(Circle())
-                .adaptiveToolbarItem(in: Circle())
+                labelContent
             }
         }
-        .opacity(isEnabled ? 1 : 0.45)
-        .disabled(!isEnabled)
-        .accessibilityLabel("Thread actions")
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Repository diff total")
+        .accessibilityValue(accessibilityValue)
     }
 
-    private static let triggerIconSize: CGFloat = 24
-    private static let minToolbarButtonSize: CGFloat = 28
-
-    private static var triggerImage: UIImage {
-        UIImage(systemName: "ellipsis") ?? UIImage()
-    }
-}
-
-struct TurnThreadActionMenuItem {
-    enum Icon {
-        case system(String)
-        case worktree
-
-        var uiImage: UIImage? {
-            switch self {
-            case .system(let systemName):
-                RemodexIcon.menuUIImage(systemName: systemName)
-            case .worktree:
-                CodexWorktreeIcon.toolbarMenuUIImage()
+    private var labelContent: some View {
+        HStack(spacing: 4) {
+            if isLoading {
+                ProgressView()
+                    .controlSize(.mini)
+            }
+            Text("+\(totals.additions)")
+                .foregroundStyle(Color.green)
+            Text("-\(totals.deletions)")
+                .foregroundStyle(Color.red)
+            if totals.binaryFiles > 0 {
+                Text("B\(totals.binaryFiles)")
+                    .foregroundStyle(.secondary)
             }
         }
+        .font(AppFont.mono(.caption))
+        .frame(minWidth: minPillWidth, minHeight: 28)
+        .contentShape(Capsule())
+        .fixedSize(horizontal: true, vertical: false)
+        .opacity(isLoading ? 0.8 : 1)
+        .adaptiveToolbarItem(in: Capsule())
     }
 
-    let title: String
-    let icon: Icon
-    var isEnabled: Bool = true
-    let handler: () -> Void
-
-    func uiAction() -> UIAction {
-        let attributes: UIMenuElement.Attributes = isEnabled ? [] : .disabled
-        return UIAction(
-            title: title,
-            image: icon.uiImage,
-            attributes: attributes
-        ) { _ in
-            guard isEnabled else { return }
-            HapticFeedback.shared.triggerImpactFeedback(style: .light)
-            handler()
+    private var accessibilityValue: String {
+        if totals.binaryFiles > 0 {
+            return "+\(totals.additions) -\(totals.deletions) binary \(totals.binaryFiles)"
         }
-    }
-}
-
-private struct UIKitThreadActionsToolbarButton: UIViewRepresentable {
-    let isEnabled: Bool
-    let actions: [TurnThreadActionMenuItem]
-    let triggerImage: UIImage
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(actions: actions)
-    }
-
-    func makeUIView(context: Context) -> UIButton {
-        var config = UIButton.Configuration.plain()
-        config.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
-
-        let button = UIButton(configuration: config)
-        button.showsMenuAsPrimaryAction = true
-        button.tintColor = .label
-        button.accessibilityLabel = "Thread actions"
-        button.setContentHuggingPriority(.required, for: .horizontal)
-        button.setContentHuggingPriority(.required, for: .vertical)
-        button.setContentCompressionResistancePriority(.required, for: .horizontal)
-        button.setContentCompressionResistancePriority(.required, for: .vertical)
-
-        let coordinator = context.coordinator
-        button.menu = UIMenu(children: [
-            UIDeferredMenuElement.uncached { [weak coordinator] completion in
-                completion(coordinator?.makeMenu().children ?? [])
-            },
-        ])
-        return button
-    }
-
-    func updateUIView(_ button: UIButton, context: Context) {
-        var config = button.configuration ?? UIButton.Configuration.plain()
-        config.image = triggerImage.withRenderingMode(.alwaysTemplate)
-        button.configuration = config
-        button.isEnabled = isEnabled
-        button.accessibilityLabel = "Thread actions"
-        context.coordinator.actions = actions
-    }
-
-    final class Coordinator {
-        var actions: [TurnThreadActionMenuItem]
-
-        init(actions: [TurnThreadActionMenuItem]) {
-            self.actions = actions
-        }
-
-        // Builds fresh rows at presentation time so disabled/loading state stays current.
-        func makeMenu() -> UIMenu {
-            UIMenu(
-                title: "",
-                options: [.displayInline],
-                children: actions.map { $0.uiAction() }
-            )
-        }
+        return "+\(totals.additions) -\(totals.deletions)"
     }
 }
 
@@ -343,7 +308,7 @@ struct TurnThreadPathSheet: View {
                                     HapticFeedback.shared.triggerImpactFeedback(style: .light)
                                     renamePrompt.present(currentTitle: threadTitle)
                                 } label: {
-                                    RemodexIcon.image(systemName: "pencil")
+                                    Image(systemName: "pencil")
                                         .font(AppFont.system(size: 14, weight: .semibold))
                                         .frame(width: 32, height: 32)
                                         .contentShape(Circle())
@@ -366,13 +331,14 @@ struct TurnThreadPathSheet: View {
                             } label: {
                                 Group {
                                     if didCopyPath {
-                                        RemodexIcon.image(systemName: "checkmark")
+                                        Image(systemName: "checkmark")
                                             .font(AppFont.system(size: 12, weight: .semibold))
                                     } else {
                                         Image("copy")
                                             .renderingMode(.template)
                                             .resizable()
                                             .scaledToFit()
+                                            .scaleEffect(x: -1, y: 1)
                                     }
                                 }
                                 .frame(width: 16, height: 16)

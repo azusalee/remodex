@@ -14,15 +14,8 @@ private enum CanonicalHistoryReconcileRetryPolicy {
 }
 
 private enum StreamingDeltaCoalescingPolicy {
-    // Show the first system row quickly so the user sees immediate progress.
-    static let initialFlushDelayNanoseconds: UInt64 = 16_000_000
-    // System rows often parse markdown/tool summaries; a slightly slower cadence keeps
-    // them readable without invalidating the timeline on every transport chunk.
-    static let flushDelayNanoseconds: UInt64 = 50_000_000
-}
-
-private enum MessageTextProcessingPolicy {
-    static let largeTextByteLimit = 64_000
+    // One display-frame worth of buffering keeps streaming lively while reducing UI invalidations.
+    static let flushDelayNanoseconds: UInt64 = 16_000_000
 }
 
 private extension Array where Element == CodexMessage {
@@ -819,7 +812,7 @@ extension CodexService {
         let hasAssistantOutput = threadMessages.contains { message in
             message.role == .assistant
                 && message.kind != .thinking
-                && Self.hasMeaningfulHistoryText(message.text)
+                && !message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
 
         return initialTurnsLoadedByThreadID.contains(threadId)
@@ -1226,15 +1219,10 @@ extension CodexService {
         text: String,
         turnId: String? = nil,
         attachments: [CodexImageAttachment] = [],
-        fileMentions: [String] = [],
-        skillMentions: [String] = [],
-        pluginMentions: [String] = []
+        fileMentions: [String] = []
     ) -> String {
-        let trimmedText = Self.normalizedMessageText(text)
-        guard Self.hasMeaningfulHistoryText(trimmedText)
-                || !attachments.isEmpty
-                || !skillMentions.isEmpty
-                || !pluginMentions.isEmpty else {
+        let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedText.isEmpty || !attachments.isEmpty else {
             return ""
         }
 
@@ -1243,8 +1231,6 @@ extension CodexService {
             role: .user,
             text: trimmedText,
             fileMentions: fileMentions,
-            skillMentions: skillMentions,
-            pluginMentions: pluginMentions,
             turnId: turnId,
             isStreaming: false,
             deliveryState: .pending,
@@ -1263,9 +1249,9 @@ extension CodexService {
         text: String,
         fileMentions: [String] = []
     ) {
-        let trimmedText = Self.normalizedMessageText(text)
+        let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
         let normalizedIncomingText = Self.normalizedMessageText(trimmedText)
-        guard Self.hasMeaningfulHistoryText(trimmedText) else {
+        guard !trimmedText.isEmpty else {
             return
         }
 
@@ -1320,8 +1306,8 @@ extension CodexService {
         kind: CodexMessageKind = .chat,
         isStreaming: Bool = false
     ) {
-        let trimmedText = Self.normalizedMessageText(text)
-        guard Self.hasMeaningfulHistoryText(trimmedText) || isStreaming else {
+        let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedText.isEmpty || isStreaming else {
             return
         }
         let resolvedTurnId = turnId ?? activeTurnIdByThread[threadId]
@@ -1359,8 +1345,7 @@ extension CodexService {
                     return candidate.role == .system
                         && candidate.kind == .fileChange
                         && candidate.turnId == resolvedTurnId
-                        && candidate.text.utf8.count <= MessageTextProcessingPolicy.largeTextByteLimit
-                        && Self.normalizedMessageText(candidate.text) == trimmedText
+                        && candidate.text.trimmingCharacters(in: .whitespacesAndNewlines) == trimmedText
                 })
             }
 
@@ -1386,8 +1371,9 @@ extension CodexService {
                     turnId: resolvedTurnId,
                     fileChangePathKeys: incomingPathKeys
                 )
-                // Preserve the row's original timeline slot. The render reducer handles
-                // trailing file-change cards inside their own turn without crossing later users.
+                if let refreshedIndex = threadMessages.indices.first(where: { threadMessages[$0].id == keepID }) {
+                    threadMessages[refreshedIndex].orderIndex = CodexMessageOrderCounter.next()
+                }
                 threadMessages.sort(by: { $0.orderIndex < $1.orderIndex })
                 messagesByThread[threadId] = threadMessages
                 persistMessages()
@@ -1795,10 +1781,7 @@ extension CodexService {
 
         if let targetIndex {
             var threadMessages = existingMessages
-            guard threadMessages[targetIndex].text.utf8.count <= MessageTextProcessingPolicy.largeTextByteLimit else {
-                return
-            }
-            let existingText = Self.normalizedMessageText(threadMessages[targetIndex].text)
+            let existingText = threadMessages[targetIndex].text.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !containsCaseInsensitiveLine(trimmedLine, in: existingText) else {
                 return
             }
@@ -2124,8 +2107,11 @@ extension CodexService {
                     }
                 }
                 if let finalIndex = threadMessages.indices.first(where: { threadMessages[$0].id == keepID }) {
-                    // Keep refreshed file-change rows anchored to their original turn.
-                    // Intra-turn rendering still trails them after the assistant answer.
+                    if kind == .fileChange {
+                        // File-change cards are intentionally trailed; other activity keeps
+                        // its original slot so late completion refreshes do not jump below the answer.
+                        threadMessages[finalIndex].orderIndex = CodexMessageOrderCounter.next()
+                    }
                     finalRawIndex = finalIndex
                 }
                 threadMessages.sort(by: { $0.orderIndex < $1.orderIndex })
@@ -2169,9 +2155,6 @@ extension CodexService {
     }
 
     private func normalizedFileChangePathKeys(from text: String) -> Set<String> {
-        guard text.utf8.count <= MessageTextProcessingPolicy.largeTextByteLimit else {
-            return []
-        }
         let inlineTotalsRegex = try? NSRegularExpression(
             pattern: #"\s*[+\u{FF0B}]\s*\d+\s*[-\u{2212}\u{2013}\u{2014}\u{FE63}\u{FF0D}]\s*\d+\s*$"#
         )
@@ -2335,9 +2318,6 @@ extension CodexService {
     }
 
     private func isFileChangeSnapshotPayload(_ text: String) -> Bool {
-        guard text.utf8.count <= MessageTextProcessingPolicy.largeTextByteLimit else {
-            return false
-        }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return false }
 
@@ -2462,7 +2442,7 @@ extension CodexService {
     ) {
         guard threadMessages.indices.contains(keepIndex) else { return }
         let keepID = threadMessages[keepIndex].id
-        let keepText = Self.normalizedMessageText(threadMessages[keepIndex].text)
+        let keepText = threadMessages[keepIndex].text.trimmingCharacters(in: .whitespacesAndNewlines)
 
         threadMessages.removeAll { candidate in
             guard candidate.id != keepID,
@@ -2486,11 +2466,7 @@ extension CodexService {
                     }
                     return !candidateKeys.isDisjoint(with: fileChangePathKeys)
                 }
-                guard candidate.text.utf8.count <= MessageTextProcessingPolicy.largeTextByteLimit,
-                      keepText.utf8.count <= MessageTextProcessingPolicy.largeTextByteLimit else {
-                    return false
-                }
-                return Self.normalizedMessageText(candidate.text) == keepText
+                return candidate.text.trimmingCharacters(in: .whitespacesAndNewlines) == keepText
             }
 
             guard candidate.turnId == turnId else {
@@ -2540,7 +2516,6 @@ extension CodexService {
         delta: String
     ) {
         let key = streamingItemMessageKey(threadId: threadId, itemId: itemId)
-        let shouldFlushInitialDeltaQuickly = streamingSystemMessageByItemID[key] == nil
         if pendingSystemDeltasByKey[key] == nil {
             pendingSystemDeltasByKey[key] = PendingSystemStreamingDeltas(
                 threadId: threadId,
@@ -2553,11 +2528,8 @@ extension CodexService {
         pendingSystemDeltasByKey[key]?.deltas.append(delta)
 
         guard systemDeltaFlushTasksByKey[key] == nil else { return }
-        let flushDelay = shouldFlushInitialDeltaQuickly
-            ? StreamingDeltaCoalescingPolicy.initialFlushDelayNanoseconds
-            : StreamingDeltaCoalescingPolicy.flushDelayNanoseconds
         systemDeltaFlushTasksByKey[key] = Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: flushDelay)
+            try? await Task.sleep(nanoseconds: StreamingDeltaCoalescingPolicy.flushDelayNanoseconds)
             guard !Task.isCancelled else { return }
             self?.flushPendingSystemDeltas(forKey: key)
         }
@@ -3035,8 +3007,8 @@ extension CodexService {
         assistantPhase: String? = nil,
         text: String
     ) {
-        let trimmedText = Self.normalizedMessageText(text)
-        guard Self.hasMeaningfulHistoryText(trimmedText) else {
+        let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedText.isEmpty else {
             return
         }
 
@@ -3267,7 +3239,7 @@ extension CodexService {
                 canonicalText: trimmedText
             )
 
-            if !Self.hasMeaningfulHistoryText(existingText) {
+            if existingText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 messagesByThread[threadId]?[messageIndex].text = completedText
             } else if existingText != completedText {
                 messagesByThread[threadId]?[messageIndex].text = completedText
@@ -3396,13 +3368,11 @@ extension CodexService {
                itemId: resolvedItemId,
                imagePath: trimmedPath,
                markdown: markdown
-            ) {
+           ) {
             let existingIndex = mergeTarget.index
             var existing = threadMessages[existingIndex]
-            if existing.text.utf8.count <= MessageTextProcessingPolicy.largeTextByteLimit,
-               !existing.text.contains(trimmedPath),
-               !existing.text.contains(markdown) {
-                existing.text = !Self.hasMeaningfulHistoryText(existing.text)
+            if !existing.text.contains(trimmedPath) && !existing.text.contains(markdown) {
+                existing.text = existing.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                     ? markdown
                     : "\(existing.text)\n\n\(markdown)"
             }
@@ -3458,7 +3428,6 @@ extension CodexService {
         if let sameImageIndex = threadMessages.indices.reversed().first(where: { index in
             let candidate = threadMessages[index]
             return candidate.role == .assistant
-                && candidate.text.utf8.count <= MessageTextProcessingPolicy.largeTextByteLimit
                 && (candidate.text.contains(imagePath) || candidate.text.contains(markdown))
         }) {
             return GeneratedImageMergeTarget(index: sameImageIndex, canAdoptImageItemId: false)
@@ -3477,7 +3446,7 @@ extension CodexService {
                 && Self.isFinalAnswerAssistantPhase(candidate.assistantPhase)
                 && !candidate.isStreaming
                 && !Self.isGeneratedImageArtifactOnly(candidate.text)
-                && Self.hasMeaningfulHistoryText(candidate.text)
+                && !candidate.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }) else {
             return nil
         }
@@ -3507,13 +3476,10 @@ extension CodexService {
         }
 
         var targetMessage = threadMessages[targetIndex]
-        guard targetMessage.text.utf8.count <= MessageTextProcessingPolicy.largeTextByteLimit else {
-            return false
-        }
-        var mergedText = Self.normalizedMessageText(targetMessage.text)
+        var mergedText = targetMessage.text.trimmingCharacters(in: .whitespacesAndNewlines)
         for artifact in artifactMessages {
-            let artifactText = Self.normalizedMessageText(artifact.text)
-            guard Self.hasMeaningfulHistoryText(artifactText), !mergedText.contains(artifactText) else {
+            let artifactText = artifact.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !artifactText.isEmpty, !mergedText.contains(artifactText) else {
                 continue
             }
             mergedText = mergedText.isEmpty ? artifactText : "\(mergedText)\n\n\(artifactText)"
@@ -3595,11 +3561,7 @@ extension CodexService {
         existingText: String,
         canonicalText: String
     ) -> String {
-        let trimmedCanonicalText = Self.normalizedMessageText(canonicalText)
-        guard existingText.utf8.count <= MessageTextProcessingPolicy.largeTextByteLimit,
-              trimmedCanonicalText.utf8.count <= MessageTextProcessingPolicy.largeTextByteLimit else {
-            return trimmedCanonicalText
-        }
+        let trimmedCanonicalText = canonicalText.trimmingCharacters(in: .whitespacesAndNewlines)
         let existingImageReferences = AssistantMarkdownImageReferenceParser.references(in: existingText)
             .filter(\.isCodexGeneratedImage)
         guard !existingImageReferences.isEmpty else {
@@ -3711,9 +3673,6 @@ extension CodexService {
         turnId: String?,
         text: String
     ) -> (index: Int, previewText: String)? {
-        guard text.utf8.count <= MessageTextProcessingPolicy.largeTextByteLimit else {
-            return nil
-        }
         let replayText = Self.normalizedMessageText(text)
         guard !replayText.isEmpty else {
             return nil
@@ -3722,13 +3681,10 @@ extension CodexService {
         let normalizedTurnId = normalizedStreamingItemID(turnId)
         for index in messages.indices.reversed() {
             let candidate = messages[index]
-            guard candidate.text.utf8.count <= MessageTextProcessingPolicy.largeTextByteLimit else {
-                continue
-            }
             let imageReferences = AssistantMarkdownImageReferenceParser.references(in: candidate.text)
             guard candidate.role == .assistant,
                   candidate.threadId == threadId,
-                  Self.hasMeaningfulHistoryText(candidate.text),
+                  !candidate.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                   !imageReferences.isEmpty,
                   imageReferences.allSatisfy(\.isCodexGeneratedImage) else {
                 continue
@@ -3755,12 +3711,8 @@ extension CodexService {
     }
 
     private static func canonicalTextRemovingReplayedImagePreview(_ text: String, previewText: String) -> String {
-        guard text.utf8.count <= MessageTextProcessingPolicy.largeTextByteLimit,
-              previewText.utf8.count <= MessageTextProcessingPolicy.largeTextByteLimit else {
-            return Self.normalizedMessageText(text)
-        }
-        let trimmedText = Self.normalizedMessageText(text)
-        let trimmedPreview = Self.normalizedMessageText(previewText)
+        let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedPreview = previewText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedText.isEmpty,
               !trimmedPreview.isEmpty,
               let range = trimmedText.range(of: trimmedPreview) else {
@@ -3781,9 +3733,6 @@ extension CodexService {
         guard itemId == nil else {
             return nil
         }
-        guard text.utf8.count <= MessageTextProcessingPolicy.largeTextByteLimit else {
-            return nil
-        }
 
         let normalizedText = Self.normalizedMessageText(text)
         guard !normalizedText.isEmpty,
@@ -3793,9 +3742,6 @@ extension CodexService {
 
         return threadMessages.indices.reversed().first { index in
             let candidate = threadMessages[index]
-            guard candidate.text.utf8.count <= MessageTextProcessingPolicy.largeTextByteLimit else {
-                return false
-            }
             let imageReferences = AssistantMarkdownImageReferenceParser.references(in: candidate.text)
             guard candidate.role == .assistant,
                   candidate.threadId == threadId,
@@ -3905,7 +3851,7 @@ extension CodexService {
         matchingText: String,
         matchingAttachments: [CodexImageAttachment] = []
     ) {
-        let normalizedText = Self.normalizedMessageText(matchingText)
+        let normalizedText = matchingText.trimmingCharacters(in: .whitespacesAndNewlines)
         let matchingAttachmentSignature = matchingAttachments
             .map(\.stableIdentityKey)
             .joined(separator: "|")
@@ -3921,7 +3867,7 @@ extension CodexService {
                 .map(\.stableIdentityKey)
                 .joined(separator: "|")
             let matchesText = normalizedText.isEmpty
-                || Self.historyTextsMatch(message.text, matchingText)
+                || message.text.trimmingCharacters(in: .whitespacesAndNewlines) == normalizedText
             let matchesAttachments = matchingAttachmentSignature.isEmpty
                 || messageAttachmentSignature == matchingAttachmentSignature
             return message.role == .user
@@ -3936,25 +3882,6 @@ extension CodexService {
         messagesByThread[threadId] = threadMessages
         persistMessages()
         updateCurrentOutput(for: threadId)
-    }
-
-    // Removes a known optimistic user row when text matching is not reliable, such as mention-only sends.
-    @discardableResult
-    func removeUserMessage(threadId: String, messageId: String) -> Bool {
-        guard !messageId.isEmpty,
-              var threadMessages = messagesByThread[threadId],
-              let index = findMessageIndex(threadId: threadId, messageId: messageId),
-              threadMessages.indices.contains(index),
-              threadMessages[index].role == .user else {
-            return false
-        }
-
-        threadMessages.remove(at: index)
-        messagesByThread[threadId] = threadMessages
-        messageIndexCacheByThread[threadId] = nil
-        persistMessages()
-        updateCurrentOutput(for: threadId)
-        return true
     }
 
     // Marks streaming assistant state complete once turn/completed arrives.
@@ -4752,10 +4679,6 @@ extension CodexService {
     }
 
     private func derivedProposedPlan(for message: CodexMessage) -> CodexProposedPlan? {
-        guard message.text.utf8.count <= MessageTextProcessingPolicy.largeTextByteLimit else {
-            return nil
-        }
-
         if message.role == .system && message.kind == .plan {
             guard let presentation = message.resolvedPlanPresentation,
                   presentation == .resultCompletedItem || presentation == .resultReady else {
@@ -5160,22 +5083,16 @@ extension CodexService {
     }
 
     func isStreamingPlaceholder(_ text: String, for kind: CodexMessageKind) -> Bool {
-        guard text.utf8.count <= MessageTextProcessingPolicy.largeTextByteLimit else {
-            return false
-        }
-        return Self.normalizedMessageText(text)
+        text.trimmingCharacters(in: .whitespacesAndNewlines)
             .caseInsensitiveCompare(streamingPlaceholderText(for: kind)) == .orderedSame
     }
 
     // Prunes only empty/placeholder thinking rows, preserving real reasoning text.
     func shouldPruneThinkingRowAfterTurnCompletion(_ message: CodexMessage) -> Bool {
-        guard Self.hasMeaningfulHistoryText(message.text) else {
+        let trimmedText = message.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedText.isEmpty else {
             return true
         }
-        guard message.text.utf8.count <= MessageTextProcessingPolicy.largeTextByteLimit else {
-            return false
-        }
-        let trimmedText = Self.normalizedMessageText(message.text)
 
         if isStreamingPlaceholder(trimmedText, for: .thinking) {
             return true

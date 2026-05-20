@@ -8,27 +8,17 @@ import SwiftUI
 import PhotosUI
 import UIKit
 
-// The handoff and fork dialogs are mutually exclusive overlays that share the
-// same worktree creation surface.
-private enum TurnWorktreeOverlayRoute: Equatable {
-    case handoff
-    case fork
-}
-
 struct TurnView: View {
     let thread: CodexThread
     let isWakingMacDisplayRecovery: Bool
-    private let initialShouldAnchorToAssistantResponse: Bool
-    private let onInitialAssistantAnchorConsumed: (() -> Void)?
     var onOpenTerminal: ((String?) -> Void)? = nil
 
     @Environment(CodexService.self) private var codex
-    @Environment(SubscriptionService.self) private var subscriptions
     @Environment(\.openURL) private var openURL
     @Environment(\.reconnectAction) private var reconnectAction
     @Environment(\.wakeMacDisplayAction) private var wakeMacDisplayAction
     @Environment(\.scenePhase) private var scenePhase
-    @State private var viewModel: TurnViewModel
+    @State private var viewModel = TurnViewModel()
     @State private var isInputFocused = false
     @State private var isShowingThreadPathSheet = false
     @State private var isShowingStatusSheet = false
@@ -38,7 +28,8 @@ struct TurnView: View {
     @State private var alertApprovalRequest: CodexApprovalRequest?
     @State private var isApprovalAlertPresented = false
     @State private var isShowingMacHandoffConfirm = false
-    @State private var worktreeOverlayRoute: TurnWorktreeOverlayRoute?
+    @State private var isShowingWorktreeHandoff = false
+    @State private var isShowingForkWorktree = false
     @State private var macHandoffErrorMessage: String?
     @State private var isHandingOffToMac = false
     @State private var isStartingSiblingChat = false
@@ -51,26 +42,7 @@ struct TurnView: View {
     @State private var hasTriggeredVoiceAutoStop = false
     @State private var voiceRecoveryReason: CodexVoiceFailureReason?
     @State private var isShowingVoiceSetupSheet = false
-    @State private var hasConsumedInitialAssistantAnchor = false
     @StateObject private var voiceTranscriptionManager = GPTVoiceTranscriptionManager()
-    @State private var workspaceFilePreviewRequest: WorkspaceFilePreviewRequest?
-
-    init(
-        thread: CodexThread,
-        isWakingMacDisplayRecovery: Bool,
-        initialShouldAnchorToAssistantResponse: Bool = false,
-        onInitialAssistantAnchorConsumed: (() -> Void)? = nil,
-        onOpenTerminal: ((String?) -> Void)? = nil
-    ) {
-        self.thread = thread
-        self.isWakingMacDisplayRecovery = isWakingMacDisplayRecovery
-        self.initialShouldAnchorToAssistantResponse = initialShouldAnchorToAssistantResponse
-        self.onInitialAssistantAnchorConsumed = onInitialAssistantAnchorConsumed
-        self.onOpenTerminal = onOpenTerminal
-        _viewModel = State(initialValue: TurnViewModel(
-            shouldAnchorToAssistantResponse: initialShouldAnchorToAssistantResponse
-        ))
-    }
 
     // ─── ENTRY POINT ─────────────────────────────────────────────
     var body: some View {
@@ -79,9 +51,7 @@ struct TurnView: View {
         let renderSnapshot = timelineState.renderSnapshot
         let activeTurnID = renderSnapshot.activeTurnID
         let planSessionSource = codex.currentPlanSessionSource(for: thread.id)
-        // Rootless Quick Chat paths are host-side storage only; the UI should stay branch/git-less.
-        let isRootlessChat = SidebarThreadGrouping.isRootlessChatThread(resolvedThread)
-        let gitWorkingDirectory = isRootlessChat ? nil : resolvedThread.gitWorkingDirectory
+        let gitWorkingDirectory = resolvedThread.gitWorkingDirectory
         let isThreadRunning = renderSnapshot.isThreadRunning
         let isEmptyThread = renderSnapshot.messages.isEmpty
         let threadDisplayPhase = codex.threadDisplayPhase(
@@ -96,7 +66,6 @@ struct TurnView: View {
         let isWorktreeProject = resolvedThread.isManagedWorktreeProject
         let isComposerAutocompletePresented = viewModel.isFileAutocompleteVisible
             || viewModel.isSkillAutocompleteVisible
-            || viewModel.isPluginAutocompleteVisible
             || viewModel.slashCommandPanelState != .hidden
         let isWorktreeHandoffAvailable = isWorktreeHandoffAvailable(
             isThreadRunning: isThreadRunning,
@@ -106,7 +75,7 @@ struct TurnView: View {
             isThreadRunning: isThreadRunning,
             gitWorkingDirectory: gitWorkingDirectory
         )
-        let toolbarNavigationContext = isRootlessChat ? nil : threadNavigationContext(for: resolvedThread)
+        let toolbarNavigationContext = threadNavigationContext(for: resolvedThread)
         let toolbarWorktreeHandoffTitle = isWorktreeProject ? "Hand off to Local" : "Hand off to Worktree"
         let isGitActionEnabled = viewModel.gitRepoSync != nil && canRunGitAction(
             isThreadRunning: isThreadRunning,
@@ -132,7 +101,6 @@ struct TurnView: View {
                 timelineChangeToken: renderSnapshot.timelineChangeToken,
                 activeTurnID: activeTurnID,
                 isThreadRunning: isThreadRunning,
-                isSendInFlight: viewModel.isSending,
                 latestTurnTerminalState: renderSnapshot.latestTurnTerminalState,
                 completedTurnIDs: renderSnapshot.completedTurnIDs,
                 stoppedTurnIDs: renderSnapshot.stoppedTurnIDs,
@@ -161,6 +129,7 @@ struct TurnView: View {
                 isLoadingRemoteEarlierMessages: renderSnapshot.isLoadingOlderHistory,
                 olderHistoryLoadErrorMessage: renderSnapshot.olderHistoryLoadErrorMessage,
                 shouldAnchorToAssistantResponse: shouldAnchorToAssistantResponseBinding,
+                isScrolledToBottom: isScrolledToBottomBinding,
                 isComposerFocused: isInputFocused,
                 isComposerAutocompletePresented: isComposerAutocompletePresented,
                 emptyState: resolvedEmptyConversationState,
@@ -181,7 +150,6 @@ struct TurnView: View {
                 isRepositoryLoadingToastVisible: false,
                 onRetryUserMessage: { messageText in
                     viewModel.input = messageText
-                    viewModel.saveLocalDraft(codex: codex, threadID: thread.id)
                     isInputFocused = true
                 },
                 onTapAssistantRevert: { message in
@@ -210,16 +178,6 @@ struct TurnView: View {
                     viewModel.clearComposerAutocomplete()
                 }
             )
-        .environment(\.openURL, OpenURLAction { url in
-            guard let path = WorkspaceFileLinkResolver.localPath(from: url) else {
-                return .systemAction
-            }
-            workspaceFilePreviewRequest = WorkspaceFilePreviewRequest(
-                path: path,
-                currentWorkingDirectory: gitWorkingDirectory
-            )
-            return .handled
-        })
         .environment(\.inlineCommitAndPushAction, showsGitControls ? {
             viewModel.inlineCommitAndPush(
                 codex: codex,
@@ -272,13 +230,13 @@ struct TurnView: View {
                     .transition(.opacity)
             }
 
-            if worktreeOverlayRoute == .handoff {
+            if isShowingWorktreeHandoff {
                 TurnWorktreeHandoffOverlay(
                     mode: .handoff,
                     preferredBaseBranch: preferredWorktreeBaseBranch,
                     isHandoffAvailable: isWorktreeHandoffAvailable,
                     isSubmitting: viewModel.isCreatingGitWorktree,
-                    onClose: { worktreeOverlayRoute = nil },
+                    onClose: { isShowingWorktreeHandoff = false },
                     onSubmit: { branchName, baseBranch in
                         submitWorktreeHandoff(
                             branchName: branchName,
@@ -291,13 +249,13 @@ struct TurnView: View {
                 .transition(.opacity)
             }
 
-            if worktreeOverlayRoute == .fork {
+            if isShowingForkWorktree {
                 TurnWorktreeHandoffOverlay(
                     mode: .fork,
                     preferredBaseBranch: preferredWorktreeBaseBranch,
                     isHandoffAvailable: isWorktreeHandoffAvailable,
                     isSubmitting: viewModel.isCreatingGitWorktree || isForkingThread,
-                    onClose: { worktreeOverlayRoute = nil },
+                    onClose: { isShowingForkWorktree = false },
                     onSubmit: { branchName, baseBranch in
                         submitForkIntoNewWorktree(
                             branchName: branchName,
@@ -323,15 +281,9 @@ struct TurnView: View {
         .animation(.spring(response: 0.35, dampingFraction: 0.88), value: viewModel.gitActionSuccess?.id)
         .fullScreenCover(isPresented: isCameraPresentedBinding) {
             CameraImagePicker { data in
-                viewModel.enqueueCapturedImageData(data, codex: codex, threadID: thread.id)
+                viewModel.enqueueCapturedImageData(data, codex: codex)
             }
             .ignoresSafeArea()
-        }
-        .fullScreenCover(item: $workspaceFilePreviewRequest) { request in
-            WorkspaceLinkedFilePreviewScreen(
-                request: request,
-                onDismiss: { workspaceFilePreviewRequest = nil }
-            )
         }
         .photosPicker(
             isPresented: isPhotoPickerPresentedBinding,
@@ -355,35 +307,22 @@ struct TurnView: View {
                 handleInitialAppear(activeTurnID: activeTurnID)
             },
             onPhotoPickerItemsChanged: { newItems in
-                // Defer the observable-model mutation out of the .onChange action
-                // to avoid AttributeGraph cycles when the parent re-renders.
-                DispatchQueue.main.async { [viewModel] in
-                    viewModel.enqueuePhotoPickerItems(newItems, codex: codex, threadID: thread.id)
-                    viewModel.photoPickerItems = []
-                }
+                handlePhotoPickerItemsChanged(newItems)
             },
             onActiveTurnChanged: { newValue in
                 if newValue != nil {
-                    // Defer the observable-model mutation out of the .onChange action
-                    // to avoid AttributeGraph cycles when the parent re-renders.
-                    DispatchQueue.main.async { [viewModel] in
-                        viewModel.clearComposerAutocomplete()
-                    }
+                    viewModel.clearComposerAutocomplete()
                 }
             },
             onThreadRunningChanged: { wasRunning, isRunning in
                 guard wasRunning, !isRunning else { return }
-                // Defer the observable-model mutation out of the .onChange action
-                // to avoid AttributeGraph cycles when the parent re-renders.
-                DispatchQueue.main.async { [viewModel] in
-                    viewModel.flushQueueIfPossible(codex: codex, threadID: thread.id)
-                    guard showsGitControls else { return }
-                    viewModel.refreshGitBranchTargets(
-                        codex: codex,
-                        workingDirectory: gitWorkingDirectory,
-                        threadID: thread.id
-                    )
-                }
+                viewModel.flushQueueIfPossible(codex: codex, threadID: thread.id)
+                guard showsGitControls else { return }
+                viewModel.refreshGitBranchTargets(
+                    codex: codex,
+                    workingDirectory: gitWorkingDirectory,
+                    threadID: thread.id
+                )
             },
             onConnectionChanged: { wasConnected, isConnected in
                 if !isConnected {
@@ -395,25 +334,16 @@ struct TurnView: View {
 
                 clearVoiceRecovery()
                 guard !wasConnected, isConnected else { return }
-                // Defer the observable-model mutation out of the .onChange action
-                // to avoid AttributeGraph cycles when the parent re-renders.
-                DispatchQueue.main.async { [viewModel] in
-                    viewModel.flushQueueIfPossible(codex: codex, threadID: thread.id)
-                    guard showsGitControls else { return }
-                    viewModel.refreshGitBranchTargets(
-                        codex: codex,
-                        workingDirectory: gitWorkingDirectory,
-                        threadID: thread.id
-                    )
-                }
+                viewModel.flushQueueIfPossible(codex: codex, threadID: thread.id)
+                guard showsGitControls else { return }
+                viewModel.refreshGitBranchTargets(
+                    codex: codex,
+                    workingDirectory: gitWorkingDirectory,
+                    threadID: thread.id
+                )
             },
             onScenePhaseChanged: { phase in
                 guard phase != .active else { return }
-                // Defer the observable-model mutation out of the .onChange action
-                // to avoid AttributeGraph cycles when the parent re-renders.
-                DispatchQueue.main.async { [viewModel] in
-                    viewModel.saveLocalDraft(codex: codex, threadID: thread.id, persistToDisk: true)
-                }
                 cancelVoiceRecordingIfNeeded()
                 invalidatePendingVoicePreflight()
             },
@@ -422,7 +352,6 @@ struct TurnView: View {
             }
         )
         .onDisappear {
-            viewModel.saveLocalDraft(codex: codex, threadID: thread.id, persistToDisk: true)
             cancelVoiceRecordingIfNeeded()
             invalidatePendingVoicePreflight()
             clearVoiceRecovery()
@@ -431,31 +360,18 @@ struct TurnView: View {
         }
         .onChange(of: isInputFocused) { _, isFocused in
             guard !isFocused else { return }
-            // Defer the observable-model mutation out of the .onChange action
-            // to avoid AttributeGraph cycles during send.
-            DispatchQueue.main.async {
-                viewModel.clearComposerAutocomplete()
-            }
+            viewModel.clearComposerAutocomplete()
         }
         .onChange(of: renderSnapshot.repoRefreshSignal) { _, newValue in
             guard showsGitControls, newValue != nil else { return }
-            // Defer the observable-model mutation out of the .onChange action
-            // to avoid AttributeGraph cycles when the parent re-renders.
-            DispatchQueue.main.async { [viewModel] in
-                viewModel.scheduleGitStatusRefresh(
-                    codex: codex,
-                    workingDirectory: gitWorkingDirectory,
-                    threadID: thread.id
-                )
-            }
+            viewModel.scheduleGitStatusRefresh(
+                codex: codex,
+                workingDirectory: gitWorkingDirectory,
+                threadID: thread.id
+            )
         }
         .onChange(of: renderSnapshot.timelineChangeToken) { _, _ in
-            // Defer the observable-model mutation out of the .onChange action
-            // to avoid AttributeGraph cycles when the parent re-renders.
-            let messages = renderSnapshot.messages
-            DispatchQueue.main.async { [viewModel] in
-                viewModel.reconcileDismissedStructuredPlanPrompts(messages: messages, codex: codex)
-            }
+            viewModel.reconcileDismissedStructuredPlanPrompts(messages: renderSnapshot.messages, codex: codex)
         }
         .onReceive(voiceTranscriptionManager.$recordingDuration) { duration in
             guard isVoiceRecording,
@@ -649,6 +565,13 @@ struct TurnView: View {
         )
     }
 
+    private var isScrolledToBottomBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.isScrolledToBottom },
+            set: { viewModel.isScrolledToBottom = $0 }
+        )
+    }
+
     // Fetches the repo-wide local patch on demand so the toolbar pill opens the same diff UI as turn changes.
     private func presentRepositoryDiff(workingDirectory: String?) {
         guard !isLoadingRepositoryDiff else { return }
@@ -773,9 +696,9 @@ struct TurnView: View {
     }
 
     private func handleSend() {
-        viewModel.clearComposerAutocomplete()
-        viewModel.sendTurn(codex: codex, subscriptions: subscriptions, threadID: thread.id)
         isInputFocused = false
+        viewModel.clearComposerAutocomplete()
+        viewModel.sendTurn(codex: codex, threadID: thread.id)
     }
 
     @ViewBuilder
@@ -898,7 +821,7 @@ struct TurnView: View {
         }
 
         guard let associatedWorktreePath = codex.associatedManagedWorktreePath(for: thread.id) else {
-            worktreeOverlayRoute = .handoff
+            isShowingWorktreeHandoff = true
             return
         }
 
@@ -922,7 +845,7 @@ struct TurnView: View {
                         threadID: thread.id
                     )
                 case .missingAssociatedWorktree:
-                    worktreeOverlayRoute = .handoff
+                    isShowingWorktreeHandoff = true
                 }
             } catch {
                 viewModel.gitSyncAlert = TurnGitSyncAlert(
@@ -938,22 +861,14 @@ struct TurnView: View {
 
     private func handleInitialAppear(activeTurnID: String?) {
         syncApprovalAlertPresentation()
-        if initialShouldAnchorToAssistantResponse && !hasConsumedInitialAssistantAnchor {
-            hasConsumedInitialAssistantAnchor = true
-            viewModel.shouldAnchorToAssistantResponse = true
-            onInitialAssistantAnchorConsumed?()
-        }
         if let pendingComposerAction = codex.consumePendingComposerAction(for: thread.id) {
             viewModel.applyPendingComposerAction(pendingComposerAction)
-            viewModel.saveLocalDraft(codex: codex, threadID: thread.id)
             isInputFocused = true
-        } else {
-            viewModel.restoreSavedLocalDraftIfNeeded(codex: codex, threadID: thread.id)
         }
     }
 
     private func handlePhotoPickerItemsChanged(_ newItems: [PhotosPickerItem]) {
-        viewModel.enqueuePhotoPickerItems(newItems, codex: codex, threadID: thread.id)
+        viewModel.enqueuePhotoPickerItems(newItems, codex: codex)
         viewModel.photoPickerItems = []
     }
 
@@ -1113,7 +1028,7 @@ struct TurnView: View {
                         )
 
                         if case .moved(let move) = outcome {
-                            worktreeOverlayRoute = nil
+                            isShowingWorktreeHandoff = false
                             viewModel.refreshGitBranchTargets(
                                 codex: codex,
                                 workingDirectory: move.projectPath,
@@ -1205,7 +1120,7 @@ struct TurnView: View {
                             from: thread.id,
                             target: .projectPath(result.worktreePath)
                         )
-                        worktreeOverlayRoute = nil
+                        isShowingForkWorktree = false
                         openThread(forkedThread.id)
                     } catch {
                         viewModel.gitSyncAlert = TurnGitSyncAlert(
@@ -1224,9 +1139,6 @@ struct TurnView: View {
     // Re-resolves the thread at action time so follow-up chats inherit the freshest cwd after sync/reconnect.
     private func resolvedProjectPathForFollowUpThread() -> String? {
         let currentThread = codex.thread(for: thread.id) ?? thread
-        guard !SidebarThreadGrouping.isRootlessChatThread(currentThread) else {
-            return nil
-        }
         return currentThread.normalizedProjectPath
     }
 
@@ -1236,16 +1148,26 @@ struct TurnView: View {
             do {
                 _ = try await codex.startThreadIfReady(
                     preferredProjectPath: resolvedProjectPathForFollowUpThread(),
-                    pendingComposerAction: .codeReview(target: target.codexPendingTarget)
+                    pendingComposerAction: .codeReview(target: pendingCodeReviewTarget(for: target))
                 )
                 viewModel.clearComposerReviewSelection()
-                viewModel.saveLocalDraft(codex: codex, threadID: thread.id, persistToDisk: true)
             } catch {
                 if let message = codex.userFacingTurnErrorMessageForFooter(from: error),
                    codex.lastErrorMessage?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true {
                     codex.lastErrorMessage = message
                 }
             }
+        }
+    }
+
+    private func pendingCodeReviewTarget(
+        for target: TurnComposerReviewTarget
+    ) -> CodexPendingCodeReviewTarget {
+        switch target {
+        case .uncommittedChanges:
+            return .uncommittedChanges
+        case .baseBranch:
+            return .baseBranch
         }
     }
 
@@ -1328,10 +1250,10 @@ struct TurnView: View {
             return nil
         }
         let fullPath = path.trimmingCharacters(in: .whitespacesAndNewlines)
-        let folderName = fullPath.pathDisplayName
+        let folderName = (fullPath as NSString).lastPathComponent
         return TurnThreadNavigationContext(
-            folderName: folderName,
-            subtitle: folderName,
+            folderName: folderName.isEmpty ? fullPath : folderName,
+            subtitle: fullPath,
             fullPath: fullPath
         )
     }
@@ -1372,7 +1294,7 @@ struct TurnView: View {
                 isThreadRunning: isThreadRunning,
                 isEmptyThread: isEmptyThread,
                 isWorktreeProject: isWorktreeProject,
-                canForkLocally: gitWorkingDirectory != nil && WorktreeFlowCoordinator.localForkProjectPath(
+                canForkLocally: WorktreeFlowCoordinator.localForkProjectPath(
                     for: currentThread,
                     localCheckoutPath: viewModel.gitLocalCheckoutPath
                 ) != nil,
@@ -1445,7 +1367,7 @@ struct TurnView: View {
                 onStartCodeReviewThread: startCodeReviewThread,
                 onStartForkThreadLocally: startLocalFork,
                 onOpenForkWorktree: {
-                    worktreeOverlayRoute = .fork
+                    isShowingForkWorktree = true
                 },
                 onOpenWorktreeHandoff: {
                     handleWorktreeHandoffTap(currentThread: currentThread)
@@ -1523,7 +1445,6 @@ struct TurnView: View {
             )
             clearVoiceRecovery()
             viewModel.appendVoiceTranscript(transcript)
-            viewModel.saveLocalDraft(codex: codex, threadID: thread.id, persistToDisk: true)
             // Keep voice flows keyboard-free; users can tap into the draft afterward if they want to edit.
             isInputFocused = false
         } catch {
@@ -1675,7 +1596,7 @@ struct TurnView: View {
     // MARK: - Empty State
 
     private var loadingState: some View {
-        ChatEmptyStatePlaceholder(
+        chatPlaceholderState(
             title: Text("Loading chat..."),
             subtitle: "Fetching the latest messages for this conversation."
         )
@@ -1691,20 +1612,49 @@ struct TurnView: View {
     }
 
     private var emptyState: some View {
-        ChatEmptyStatePlaceholder(
-            title: ChatEmptyStateTitleBuilder.makeTitle(for: emptyStateFolderName),
+        chatPlaceholderState(
+            title: emptyStateTitle,
             subtitle: "Chats are End-to-end encrypted"
         )
     }
 
+    private var emptyStateTitle: Text {
+        guard let folder = emptyStateFolderName else {
+            return Text("Hi! How can I help you?")
+        }
+        return Text("What should we do in ")
+            + Text(folder).foregroundStyle(.secondary)
+            + Text("?")
+    }
+
     private var emptyStateFolderName: String? {
-        let resolvedThread = currentResolvedThread
-        guard !SidebarThreadGrouping.isRootlessChatThread(resolvedThread),
-              let cwd = resolvedThread.gitWorkingDirectory else { return nil }
-        let display = cwd.pathDisplayName
-        // Defensive: pathDisplayName falls back to the input, so only nil out
-        // when there's no usable folder portion at all (empty cwd after split).
-        return display.isEmpty ? nil : display
+        guard let cwd = currentResolvedThread.gitWorkingDirectory else { return nil }
+        let component = (cwd as NSString).lastPathComponent
+        return component.isEmpty ? nil : component
+    }
+
+    private func chatPlaceholderState(title: Text, subtitle: String) -> some View {
+        VStack(spacing: 12) {
+            Spacer()
+            Image("AppLogo")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 56, height: 56)
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .adaptiveGlass(in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            title
+                .font(AppFont.title2(weight: .regular))
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 28)
+            Text(subtitle)
+                .font(AppFont.caption())
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 28)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding()
     }
 }
 

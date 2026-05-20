@@ -1,5 +1,5 @@
 // FILE: AssistantTurnEndActionsView.swift
-// Purpose: Renders assistant block-end Revert/Commit controls.
+// Purpose: Renders assistant block-end Diff/Revert/Commit controls.
 // Layer: View Component
 // Exports: AssistantTurnEndActionsView
 // Depends on: SwiftUI, TurnDiffSheet, AssistantBlockAccessoryState
@@ -13,6 +13,8 @@ struct AssistantTurnEndActionsView: View {
     let inlineCommitAndPushPhase: InlineCommitAndPushPhase?
     let assistantRevertAction: ((CodexMessage) -> Void)?
 
+    @State private var isShowingBlockDiffSheet = false
+
     private var isInlineCommitAndPushRunning: Bool {
         inlineCommitAndPushPhase != nil
     }
@@ -22,7 +24,7 @@ struct AssistantTurnEndActionsView: View {
     }
 
     var body: some View {
-        HStack(spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
             if let revert = accessoryState.blockRevertPresentation {
                 assistantRevertButton(
                     presentation: revert,
@@ -30,9 +32,44 @@ struct AssistantTurnEndActionsView: View {
                 )
             }
 
-            if let action = inlineCommitAndPushAction {
-                inlineCommitAndPushButton(action: action)
+            HStack(spacing: 10) {
+                if let entries = accessoryState.blockDiffEntries, !entries.isEmpty {
+                    diffButton(entries: entries)
+                }
+
+                if let action = inlineCommitAndPushAction {
+                    inlineCommitAndPushButton(action: action)
+                }
             }
+        }
+    }
+
+    private func diffButton(entries: [TurnFileChangeSummaryEntry]) -> some View {
+        let totalAdditions = entries.reduce(0) { $0 + $1.additions }
+        let totalDeletions = entries.reduce(0) { $0 + $1.deletions }
+
+        return Button {
+            isShowingBlockDiffSheet = true
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "doc.text.magnifyingglass")
+                    .font(AppFont.system(size: 10, weight: .medium))
+                Text("Diff")
+                DiffCountsLabel(additions: totalAdditions, deletions: totalDeletions)
+            }
+            .font(AppFont.mono(.body))
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .adaptiveGlass(.regular, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .sheet(isPresented: $isShowingBlockDiffSheet) {
+            TurnDiffSheet(
+                title: "Changes",
+                entries: entries,
+                bodyText: accessoryState.blockDiffText ?? "",
+                messageID: message.id
+            )
         }
     }
 
@@ -97,7 +134,7 @@ struct AssistantTurnEndActionsView: View {
             assistantRevertAction?(targetMessage)
         } label: {
             HStack(spacing: 4) {
-                RemodexIcon.image(systemName: iconName)
+                Image(systemName: iconName)
                     .font(AppFont.system(size: 10, weight: .medium))
                     .foregroundStyle(accentColor)
                 Text(presentation.title)

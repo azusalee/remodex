@@ -11,7 +11,7 @@ struct SettingsRuntimeDefaultsCard: View {
 
     private let runtimeAutoValue = "__AUTO__"
     private let runtimeNormalValue = "__NORMAL__"
-    private let settingsAccentColor = Color.primary
+    private let settingsAccentColor = Color(.plan)
 
     var body: some View {
         SettingsCard(title: "Runtime defaults") {

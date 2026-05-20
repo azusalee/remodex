@@ -359,7 +359,10 @@ final class CodexPushNotificationRegistrationTests: XCTestCase {
             }
         }
 
-        service.reconcileLocalThreadsWithServer([CodexThread(id: "thread-retry", title: "Retry thread")])
+        service.reconcileLocalThreadsWithServer(
+            [CodexThread(id: "thread-retry", title: "Retry thread")],
+            serverArchivedThreads: []
+        )
         try? await Task.sleep(nanoseconds: 80_000_000)
 
         XCTAssertEqual(service.activeThreadId, "thread-retry")

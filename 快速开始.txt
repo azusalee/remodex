@@ -1,0 +1,13 @@
+安装好codex的app和codex cli
+
+运行CodexMobile, 需要修改项目的bundleid和证书, 把app安装到自己手机上.
+
+电脑打开命令行，跑这几个命令就行了
+npm install -g remodex@latest
+remodex restart
+remodex up
+
+然后出现一个二维码，手机扫这个二维码就可以匹配上了
+
+然后就可以通过手机跟电脑上的codex沟通
+

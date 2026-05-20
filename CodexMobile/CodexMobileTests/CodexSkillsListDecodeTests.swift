@@ -69,7 +69,7 @@ final class CodexSkillsListDecodeTests: XCTestCase {
         XCTAssertTrue(requestedSourceKinds.contains("vscode"))
     }
 
-    func testListThreadsDefaultsToCappedSidebarMetadata() async throws {
+    func testListThreadsDefaultsToUncappedSidebarMetadata() async throws {
         let service = makeService()
         var capturedParams: [RPCObject] = []
 
@@ -92,8 +92,8 @@ final class CodexSkillsListDecodeTests: XCTestCase {
         XCTAssertEqual(capturedParams.count, 2)
         let activeParams = try XCTUnwrap(capturedParams.first { $0["archived"]?.boolValue != true })
         let archivedParams = try XCTUnwrap(capturedParams.first { $0["archived"]?.boolValue == true })
-        XCTAssertEqual(activeParams["limit"]?.intValue, 70)
-        XCTAssertEqual(archivedParams["limit"]?.intValue, 10)
+        XCTAssertNil(activeParams["limit"])
+        XCTAssertNil(archivedParams["limit"])
     }
 
     func testDecodeSkillsListParsesBucketedDataShape() {

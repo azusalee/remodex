@@ -28,7 +28,7 @@ struct TerminalConnectionStringField: View {
         HStack(spacing: 14) {
             HStack(spacing: 4) {
                 Text("ssh")
-                RemodexIcon.image(systemName: "chevron.up.chevron.down")
+                Image(systemName: "chevron.up.chevron.down")
                     .font(.system(size: 13, weight: .semibold))
             }
             .font(.system(size: 15, weight: .medium))
@@ -77,7 +77,7 @@ struct TerminalEditorRow: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
             if showsChevron {
-                RemodexIcon.image(systemName: "chevron.right")
+                Image(systemName: "chevron.right")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(.tertiary)
             }
@@ -136,7 +136,7 @@ struct TerminalPrivateKeyEditor: View {
 private struct TerminalPrivateKeySavedRow: View {
     var body: some View {
         HStack(spacing: 8) {
-            RemodexIcon.image(systemName: "checkmark.seal.fill")
+            Image(systemName: "checkmark.seal.fill")
                 .foregroundStyle(.green)
             Text("Private key saved")
                 .font(.system(size: 11))

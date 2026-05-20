@@ -15,7 +15,7 @@ struct SettingsView: View {
             SettingsAppearanceCard(appFontStyle: appFontStyleBinding)
             SettingsNotificationsCard()
             SettingsGPTAccountCard()
-            SettingsSubscriptionCard()
+            SettingsAccessCard()
             SettingsBridgeVersionCard()
             SettingsRuntimeDefaultsCard()
             SettingsAboutCard()
@@ -24,7 +24,6 @@ struct SettingsView: View {
         }
         .listStyle(.insetGrouped)
         .font(AppFont.body())
-        .tint(.primary)
         .navigationTitle("Settings")
     }
 
@@ -102,9 +101,9 @@ private struct SettingsUsageCard: View {
 
 private struct SettingsAppearanceCard: View {
     @Binding var appFontStyle: AppFont.Style
-    @AppStorage(GlassPreference.storageKey) private var useLiquidGlass = true
+    @AppStorage("codex.useLiquidGlass") private var useLiquidGlass = true
     @AppStorage(UserBubbleColor.storageKey) private var userBubbleColorRawValue = UserBubbleColor.defaultStoredRawValue
-    private let settingsAccentColor = Color.primary
+    private let settingsAccentColor = Color(.plan)
 
     var body: some View {
         SettingsCard(title: "Appearance") {
@@ -267,7 +266,7 @@ private struct SettingsNotificationsCard: View {
     var body: some View {
         SettingsCard(title: "Notifications") {
             HStack(spacing: 10) {
-                RemodexIcon.image(systemName: "bell.badge")
+                Image(systemName: "bell.badge")
                     .foregroundStyle(.primary)
                 Text("Status")
                 Spacer()
@@ -335,7 +334,7 @@ private struct SettingsGPTAccountCard: View {
                     Label("Info", systemImage: "info.circle")
                         .foregroundStyle(.primary)
                     Spacer()
-                    RemodexIcon.image(systemName: "chevron.right")
+                    Image(systemName: "chevron.right")
                         .font(AppFont.caption(weight: .semibold))
                         .foregroundStyle(.tertiary)
                 }
@@ -499,7 +498,7 @@ private struct SettingsArchivedChatsCard: View {
                 ArchivedChatsView()
             } label: {
                 HStack {
-                    RemodexIcon.label("Archived Chats", systemName: "archivebox")
+                    Label("Archived Chats", systemImage: "archivebox")
                     Spacer()
                     if archivedCount > 0 {
                         Text("\(archivedCount)")

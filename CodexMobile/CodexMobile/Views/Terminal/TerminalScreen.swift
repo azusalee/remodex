@@ -86,18 +86,23 @@ struct TerminalScreen: View {
     }
 
     private var navigationTopLine: String {
-        let trimmed = terminalHostTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? "Terminal" : trimmed
+        let topLine = [
+            terminalHostTitle,
+            projectDisplayName(for: currentWorkingDirectory),
+        ]
+        .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+        .filter { !$0.isEmpty }
+        .joined(separator: " · ")
+
+        return topLine.isEmpty ? "Terminal" : topLine
     }
 
-    // Keep the subtitle short and stable; long cwd/user-host strings are already
-    // available through terminal context and tend to crowd the navigation bar.
     private var navigationBottomLine: String {
-        if let project = projectDisplayName(for: currentWorkingDirectory),
-           !project.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return project
-        }
-        return "Terminal"
+        firstNonEmpty([
+            currentWorkingDirectory,
+            profileResolvedFromConnection.connectionString,
+            "SSH terminal",
+        ]) ?? "SSH terminal"
     }
 
     private var statusLabel: String {
@@ -156,15 +161,14 @@ struct TerminalScreen: View {
         ]
     }
 
-    // Keep the accessory rail to two well-fitted capsules (matches the
-    // reference design in screenshot #2). A previous "extras" cluster with a
-    // standalone `-` key got hard-clipped between the symbols capsule and the
-    // keyboard-dismiss circle on standard-width iPhones, which is why the bar
-    // read as "cut off". Dash is still easy to type from the system numpad.
     private var terminalToolbarClusters: [TerminalToolbarCluster] {
         [
             TerminalToolbarCluster(id: "modifiers", actions: modifierClusterActions),
             TerminalToolbarCluster(id: "symbols", actions: symbolClusterActions),
+            TerminalToolbarCluster(
+                id: "extras",
+                actions: [TerminalToolbarAction(kind: .send("-"), key: "dash", label: "-")]
+            ),
         ]
     }
 
@@ -217,7 +221,6 @@ struct TerminalScreen: View {
                     statusLabel: statusLabel,
                     errorDetail: terminalErrorDetail,
                     statusTone: statusTone,
-                    theme: theme,
                     fontSize: terminalFontSize,
                     sessions: terminalMenuSessions,
                     activeTerminalId: activeTerminalId,
@@ -299,11 +302,7 @@ struct TerminalScreen: View {
                     }
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                // Keep a small vertical breathing room from the toolbar / accessory bar
-                // but give the SSH output the full width; wide outputs like neofetch
-                // were reading as cropped with the previous 8pt horizontal inset.
-                .padding(.horizontal, 4)
-                .padding(.vertical, 6)
+                .padding(8)
             } else {
                 TerminalFallbackSurface(
                     snapshot: activeSnapshot,
@@ -609,37 +608,28 @@ struct TerminalScreen: View {
         return value
     }
 
-    // Only the first character is modified by Ctrl; the rest of the chunk is
-    // passed through verbatim. Without preserving the tail, a paste or
-    // autocomplete arriving while Ctrl was armed would drop everything past
-    // the first character.
     private static func applyCtrlModifier(_ input: String) -> String {
         guard let firstCharacter = input.first else {
             return input
         }
 
-        let tail = String(input.dropFirst())
-
         let lowerCharacter = Character(firstCharacter.lowercased())
         if let scalar = lowerCharacter.unicodeScalars.first,
            lowerCharacter >= "a",
            lowerCharacter <= "z" {
-            let modified = String(UnicodeScalar(scalar.value - 96) ?? scalar)
-            return modified + tail
+            return String(UnicodeScalar(scalar.value - 96) ?? scalar)
         }
 
-        let modified: String
         switch firstCharacter {
-        case "@": modified = "\u{0}"
-        case "[": modified = "\u{1B}"
-        case "\\": modified = "\u{1C}"
-        case "]": modified = "\u{1D}"
-        case "^": modified = "\u{1E}"
-        case "_": modified = "\u{1F}"
-        case "?": modified = "\u{7F}"
-        default: return input
+        case "@": return "\u{0}"
+        case "[": return "\u{1B}"
+        case "\\": return "\u{1C}"
+        case "]": return "\u{1D}"
+        case "^": return "\u{1E}"
+        case "_": return "\u{1F}"
+        case "?": return "\u{7F}"
+            default: return input
         }
-        return modified + tail
     }
 
     private static func modifiedArrowSequence(_ input: String, modifier: TerminalPendingModifier) -> String? {

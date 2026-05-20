@@ -39,7 +39,10 @@ struct CommandOutputImageReference: Identifiable, Equatable {
 
     var id: String { path }
 
-    var fileName: String { path.pathDisplayName }
+    var fileName: String {
+        let basename = (path as NSString).lastPathComponent
+        return basename.isEmpty ? path : basename
+    }
 }
 
 nonisolated struct AssistantMarkdownImageReference: Identifiable, Equatable {
@@ -53,7 +56,10 @@ nonisolated struct AssistantMarkdownImageReference: Identifiable, Equatable {
         self.altText = altText
     }
 
-    var fileName: String { path.pathDisplayName }
+    var fileName: String {
+        let basename = (path as NSString).lastPathComponent
+        return basename.isEmpty ? path : basename
+    }
 
     var displayTitle: String {
         let trimmedAlt = altText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -532,11 +538,11 @@ struct CommandExecutionCardBody: View {
         HStack(spacing: 0) {
             (
                 Text(display.verb)
-                    .font(AppFont.body(weight: .regular))
+                    .font(AppFont.subheadline(weight: .medium))
                     .foregroundStyle(.secondary)
                 +
                 Text(" " + display.target)
-                    .font(AppFont.body(weight: .regular))
+                    .font(AppFont.subheadline())
                     .foregroundStyle(.tertiary)
             )
             .lineLimit(1)
@@ -545,10 +551,10 @@ struct CommandExecutionCardBody: View {
             Spacer(minLength: 6)
 
             Text(statusLabel)
-                .font(AppFont.body(weight: .regular))
+                .font(AppFont.caption())
                 .foregroundStyle(accent == .failed ? Color.red : Color.secondary.opacity(0.5))
 
-            RemodexIcon.image(systemName: "chevron.right")
+            Image(systemName: "chevron.right")
                 .font(AppFont.system(size: 8, weight: .semibold))
                 .foregroundStyle(.quaternary)
                 .padding(.leading, 4)
@@ -808,7 +814,7 @@ struct CommandExecutionDetailSheet: View {
 
     private var commandSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            RemodexIcon.label("Command", systemName: "terminal.fill")
+            Label("Command", systemImage: "terminal.fill")
                 .font(AppFont.mono(.caption))
                 .foregroundStyle(commandAccent)
 
@@ -864,7 +870,7 @@ struct CommandExecutionDetailSheet: View {
                 }
             } label: {
                 HStack(spacing: 6) {
-                    RemodexIcon.image(systemName: isOutputExpanded ? "chevron.down" : "chevron.right")
+                    Image(systemName: isOutputExpanded ? "chevron.down" : "chevron.right")
                         .font(AppFont.system(size: 10, weight: .semibold))
                     Text("Output (last \(CommandExecutionDetails.maxOutputLines) lines)")
                         .font(AppFont.mono(.caption))

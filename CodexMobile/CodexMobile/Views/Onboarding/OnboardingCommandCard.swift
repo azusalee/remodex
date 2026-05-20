@@ -31,13 +31,14 @@ struct OnboardingCommandCard: View {
             } label: {
                 Group {
                     if copied {
-                        RemodexIcon.image(systemName: "checkmark")
+                        Image(systemName: "checkmark")
                             .font(.system(size: 12, weight: .medium))
                     } else {
                         Image("copy")
                             .renderingMode(.template)
                             .resizable()
                             .scaledToFit()
+                            .scaleEffect(x: -1, y: 1)
                     }
                 }
                 .frame(width: 15, height: 15)

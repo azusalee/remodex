@@ -87,13 +87,11 @@ struct VoiceRecordingCapsule: View {
 
     private var cancelButton: some View {
         Button(action: onCancel) {
-            RemodexCircleBadge(
-                systemName: "xmark",
-                foreground: Color.secondary,
-                background: Color.primary.opacity(0.08),
-                diameter: 14,
-                iconSize: 8
-            )
+            Image(systemName: "xmark")
+                .font(AppFont.system(size: 8, weight: .bold))
+                .foregroundStyle(.secondary)
+                .frame(width: 14, height: 14)
+                .background(Color.primary.opacity(0.08), in: Circle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Cancel voice recording")
@@ -168,14 +166,15 @@ private struct VoiceRecordingCapsulePreview: View {
             Spacer()
 
             VStack(spacing: 0) {
-                TurnMentionChipRow.composer(
-                    chips: [
-                        .file("TurnView.swift"),
-                        .skill("refactor-code"),
-                    ],
-                    topPadding: 14,
-                    onRemove: { _ in }
-                )
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        FileMentionChip(fileName: "TurnView.swift")
+                        SkillMentionChip(skillName: "refactor-code")
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 16)
+                .padding(.top, 14)
 
                 Text("Ask anything... @plugins, $skills, /commands")
                     .font(AppFont.body())
@@ -186,7 +185,7 @@ private struct VoiceRecordingCapsulePreview: View {
                     .padding(.bottom, 12)
 
                 HStack(spacing: 12) {
-                    RemodexIcon.image(systemName: "plus")
+                    Image(systemName: "plus")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .frame(width: 22, height: 22)
@@ -204,18 +203,21 @@ private struct VoiceRecordingCapsulePreview: View {
                             isRecording = true
                         }
                     } label: {
-                        RemodexCircleBadge(
-                            systemName: isRecording ? "stop.fill" : "mic.fill",
-                            foreground: Color(.systemBackground),
-                            background: isRecording ? Color(.systemRed) : Color(.label)
-                        )
+                        Image(systemName: isRecording ? "stop.fill" : "mic.fill")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(Color(.systemBackground))
+                            .frame(width: 32, height: 32)
+                            .background(
+                                isRecording ? Color(.systemRed) : Color(.label),
+                                in: Circle()
+                            )
                     }
 
-                    RemodexCircleBadge(
-                        systemName: "arrow.up",
-                        foreground: Color(.systemBackground),
-                        background: Color(.label)
-                    )
+                    Image(systemName: "arrow.up")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(Color(.systemBackground))
+                        .frame(width: 32, height: 32)
+                        .background(Color(.label), in: Circle())
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, 10)

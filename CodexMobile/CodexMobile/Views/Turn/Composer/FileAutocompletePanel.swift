@@ -67,7 +67,7 @@ struct FileAutocompletePanel: View {
                                 onSelectPlugin(item)
                             } label: {
                                 HStack(spacing: 8) {
-                                    RemodexIcon.image(systemName: "circle.grid.2x2")
+                                    Image(systemName: "circle.grid.2x2")
                                         .font(AppFont.system(size: 12, weight: .semibold))
                                         .foregroundStyle(.secondary)
 

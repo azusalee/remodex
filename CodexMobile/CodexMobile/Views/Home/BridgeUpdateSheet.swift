@@ -54,7 +54,7 @@ struct BridgeUpdateSheet: View {
                                 }
                             } label: {
                                 HStack(spacing: 6) {
-                                    RemodexIcon.image(systemName: didCopyCommand ? "checkmark" : "doc.on.doc")
+                                    Image(systemName: didCopyCommand ? "checkmark" : "doc.on.doc")
                                         .font(.system(size: 13, weight: .semibold))
                                     Text(didCopyCommand ? "Copied" : "Copy")
                                         .font(AppFont.caption(weight: .semibold))

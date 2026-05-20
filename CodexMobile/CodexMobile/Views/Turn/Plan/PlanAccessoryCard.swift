@@ -453,7 +453,7 @@ private struct PlanAccessoryInContextPreview: View {
 
     private var previewComposer: some View {
         HStack(spacing: 12) {
-            RemodexIcon.image(systemName: "plus")
+            Image(systemName: "plus")
                 .font(AppFont.system(size: 14, weight: .semibold))
                 .foregroundStyle(.secondary)
                 .frame(width: 32, height: 32)
@@ -465,7 +465,7 @@ private struct PlanAccessoryInContextPreview: View {
 
             Spacer(minLength: 0)
 
-            RemodexIcon.image(systemName: "arrow.up.circle.fill")
+            Image(systemName: "arrow.up.circle.fill")
                 .font(AppFont.system(size: 24, weight: .semibold))
                 .foregroundStyle(Color(.plan))
         }

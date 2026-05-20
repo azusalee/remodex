@@ -96,7 +96,7 @@ struct InAppToastBannerView<LeadingIcon: View>: View {
 
             if isDismissable, let onDismiss {
                 Button(action: onDismiss) {
-                    RemodexIcon.image(systemName: "xmark")
+                    Image(systemName: "xmark")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(.secondary)
                         .frame(width: 28, height: 28)

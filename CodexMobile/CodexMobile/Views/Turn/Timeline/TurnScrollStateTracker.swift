@@ -65,7 +65,9 @@ struct TurnScrollStateTracker {
     // to manual before geometry can pull the viewport back to the tail.
     static func shouldPinDuringGeometryChange(
         currentMode: TurnAutoScrollMode,
-        isAutomaticScrollingPaused: Bool
+        isScrolledToBottom: Bool,
+        isAutomaticScrollingPaused: Bool,
+        assistantAnchorTargetExists: Bool
     ) -> Bool {
         guard !isAutomaticScrollingPaused else {
             return false
@@ -75,7 +77,7 @@ struct TurnScrollStateTracker {
         case .followBottom:
             return true
         case .anchorAssistantResponse:
-            return false
+            return isScrolledToBottom && !assistantAnchorTargetExists
         case .manual:
             return false
         }

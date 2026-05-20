@@ -19,8 +19,6 @@ struct SidebarTopActionsRow: View {
     let onQuickChat: () -> Void
     let onNewProject: () -> Void
 
-    @ScaledMetric(relativeTo: .body) private var circleSide: CGFloat = 55
-
     private var isBusy: Bool { pendingAction != nil }
 
     var body: some View {
@@ -41,7 +39,7 @@ struct SidebarTopActionsRow: View {
 
             actionButton(
                 action: .newProject,
-                systemName: "folder",
+                systemName: "folder.badge.plus",
                 label: "New Project",
                 tap: onNewProject
             )
@@ -61,19 +59,23 @@ struct SidebarTopActionsRow: View {
     ) -> some View {
         let isLoading = pendingAction == action
 
-        HapticButton(hapticStyle: .medium, action: tap) {
+        Button {
+            HapticFeedback.shared.triggerImpactFeedback()
+            tap()
+        } label: {
             VStack(spacing: 8) {
                 ZStack {
                     Circle()
                         .fill(Color(.secondarySystemBackground))
-                        .frame(width: circleSide, height: circleSide)
+                        .frame(width: 55, height: 55)
 
                     if isLoading {
                         ProgressView()
                             .tint(.primary)
                             .scaleEffect(0.9)
                     } else {
-                        RemodexIcon.image(systemName: systemName, size: 22, weight: .regular)
+                        Image(systemName: systemName)
+                            .font(.system(size: 16, weight: .regular))
                             .foregroundStyle(.primary)
                     }
                 }

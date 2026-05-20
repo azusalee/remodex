@@ -12,7 +12,12 @@ extension CodexService {
         from sourceThreadId: String,
         target: CodexThreadForkTarget
     ) async throws -> CodexThread {
-        try await awaitRuntimeInitializedIfNeeded()
+        guard isConnected else {
+            throw CodexServiceError.invalidInput("Connect to runtime first.")
+        }
+        guard isInitialized else {
+            throw CodexServiceError.invalidInput("Runtime is still initializing. Wait a moment and retry.")
+        }
 
         return try await forkThread(from: sourceThreadId, target: target)
     }

@@ -7,9 +7,6 @@
 import Foundation
 
 enum AssistantReplayDeduper {
-    private static let largeReplayTextByteLimit = 64_000
-    private static let smallWhitespaceScanByteLimit = 512
-
     // Removes assistant rows that are exact replays of assistant bubbles already seen in the same response block.
     nonisolated static func dedupeBlockReplays(in messages: [CodexMessage]) -> [CodexMessage] {
         var result: [CodexMessage] = []
@@ -67,9 +64,11 @@ enum AssistantReplayDeduper {
         excludingMessageID: String? = nil,
         minimumCharacterCount: Int = 80
     ) -> Int? {
-        guard isReplayTextLongEnough(text, minimumCharacterCount: minimumCharacterCount) else {
+        let replayText = normalizedReplayText(text)
+        guard replayText.count >= minimumCharacterCount else {
             return nil
         }
+
         let candidateIndices = responseBlockAssistantIndices(
             in: messages,
             threadId: threadId,
@@ -77,7 +76,7 @@ enum AssistantReplayDeduper {
             excludingMessageID: excludingMessageID
         )
         return candidateIndices.reversed().first { index in
-            exactReplayTextsMatch(messages[index].text, text)
+            normalizedReplayText(messages[index].text) == replayText
         }
     }
 
@@ -89,9 +88,6 @@ enum AssistantReplayDeduper {
         text: String,
         excludingMessageID: String? = nil
     ) -> [Int]? {
-        guard text.utf8.count <= largeReplayTextByteLimit else {
-            return nil
-        }
         let replayText = normalizedReplayText(text)
         guard !replayText.isEmpty else {
             return nil
@@ -106,7 +102,7 @@ enum AssistantReplayDeduper {
                     && candidate.threadId == threadId
                     && candidate.id != excludingMessageID
                     && normalizedIdentifier(candidate.turnId) == normalizedTurnId
-                    && hasMeaningfulReplayText(candidate.text)
+                    && !candidate.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             }
         } else {
             turnScopedIndices = []
@@ -130,30 +126,6 @@ enum AssistantReplayDeduper {
             .split(whereSeparator: \.isWhitespace)
             .joined(separator: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    private nonisolated static func exactReplayTextsMatch(_ previous: String, _ incoming: String) -> Bool {
-        guard previous.utf8.count <= largeReplayTextByteLimit,
-              incoming.utf8.count <= largeReplayTextByteLimit else {
-            return previous == incoming
-        }
-        return normalizedReplayText(previous) == normalizedReplayText(incoming)
-    }
-
-    private nonisolated static func isReplayTextLongEnough(
-        _ text: String,
-        minimumCharacterCount: Int
-    ) -> Bool {
-        guard text.utf8.count <= largeReplayTextByteLimit else {
-            return true
-        }
-        return normalizedReplayText(text).count >= minimumCharacterCount
-    }
-
-    private nonisolated static func hasMeaningfulReplayText(_ text: String) -> Bool {
-        guard !text.isEmpty else { return false }
-        guard text.utf8.count <= smallWhitespaceScanByteLimit else { return true }
-        return !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private nonisolated static func normalizedIdentifier(_ value: String?) -> String? {
@@ -186,7 +158,7 @@ enum AssistantReplayDeduper {
                 && candidate.threadId == threadId
                 && candidate.id != excludingMessageID
                 && (normalizedTurnId == nil || candidateTurnId == nil || candidateTurnId == normalizedTurnId)
-                && hasMeaningfulReplayText(candidate.text)
+                && !candidate.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
     }
 
@@ -198,19 +170,10 @@ enum AssistantReplayDeduper {
         guard candidateIndices.count >= 2 else {
             return nil
         }
-        guard replayText.utf8.count <= largeReplayTextByteLimit else {
-            return nil
-        }
 
         let existingBlockText = candidateIndices
-            .map { normalizedSmallReplayPart(messages[$0].text) }
+            .map { messages[$0].text.trimmingCharacters(in: .whitespacesAndNewlines) }
             .joined(separator: "\n\n")
         return normalizedReplayText(existingBlockText) == replayText ? candidateIndices : nil
     }
-
-    private nonisolated static func normalizedSmallReplayPart(_ text: String) -> String {
-        guard text.utf8.count <= smallWhitespaceScanByteLimit else { return text }
-        return text.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
 }

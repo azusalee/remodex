@@ -101,7 +101,6 @@ extension CodexService {
         isAppInForeground = isForeground
         if isForeground {
             if isConnected && isInitialized {
-                startWebSocketKeepAliveLoop()
                 startSyncLoop()
                 requestImmediateSync(threadId: activeThreadId)
                 // Re-check bridge-managed state when the app becomes active again.
@@ -109,11 +108,9 @@ extension CodexService {
                     await self?.refreshBridgeManagedState(allowAvailableBridgeUpdatePrompt: true)
                 }
             } else {
-                stopWebSocketKeepAliveLoop()
                 stopSyncLoop()
             }
         } else {
-            stopWebSocketKeepAliveLoop()
             if isConnected && isInitialized {
                 startSyncLoop()
                 requestImmediateSync(threadId: activeThreadId)
@@ -159,11 +156,19 @@ extension CodexService {
         }
 
         do {
-            // Poll recent metadata only; listThreads() uses the same cap during reconnect/refresh.
-            let activeThreads = try await fetchCoalescedServerThreads(limit: recentActiveThreadListLimit)
+            // Poll recent metadata only; full sidebar hydration happens in listThreads().
+            let activeThreads = try await fetchServerThreads(limit: recentActiveThreadListLimit)
 
-            reconcileLocalThreadsWithServer(activeThreads)
-            debugSyncLog("sync thread/list active=\(activeThreads.count) local=\(threads.count)")
+            // Also fetch server-archived threads so they survive app restarts.
+            var archivedThreads: [CodexThread] = []
+            do {
+                archivedThreads = try await fetchServerThreads(limit: recentArchivedThreadListLimit, archived: true)
+            } catch {
+                debugSyncLog("thread/list archived fetch failed (non-fatal): \(error.localizedDescription)")
+            }
+
+            reconcileLocalThreadsWithServer(activeThreads, serverArchivedThreads: archivedThreads)
+            debugSyncLog("sync thread/list active=\(activeThreads.count) archived=\(archivedThreads.count) local=\(threads.count)")
         } catch {
             presentConnectionErrorIfNeeded(error)
         }
@@ -192,14 +197,15 @@ extension CodexService {
         }
     }
 
-    func reconcileLocalThreadsWithServer(_ serverThreads: [CodexThread]) {
+    func reconcileLocalThreadsWithServer(
+        _ serverThreads: [CodexThread],
+        serverArchivedThreads: [CodexThread] = []
+    ) {
         let localByID = Dictionary(uniqueKeysWithValues: threads.map { ($0.id, $0) })
-        let serverThreadIDs = Set(serverThreads.map(\.id))
         let persistedArchivedIDs = locallyArchivedThreadIDs
         let persistedDeletedIDs = locallyDeletedThreadIDs
 
         var merged: [String: CodexThread] = [:]
-        var snapshotOnlyPinnedIDs: Set<String> = []
 
         // Merge active server threads.
         for serverThread in serverThreads {
@@ -221,6 +227,26 @@ extension CodexService {
             merged[liveThread.id] = liveThread
         }
 
+        // Merge server-archived threads (from thread/list?archived=true).
+        for serverThread in serverArchivedThreads {
+            if persistedDeletedIDs.contains(serverThread.id) {
+                continue
+            }
+            guard merged[serverThread.id] == nil else {
+                continue
+            }
+
+            var archivedThread = serverThread
+            if let localThread = localByID[archivedThread.id] {
+                archivedThread = mergedThread(archivedThread, with: localThread, treatAsServerState: true)
+            }
+            archivedThread.syncState = .archivedLocal
+
+            // Persist the archived state so it survives future reconciliations.
+            addLocallyArchivedThreadID(archivedThread.id)
+            merged[archivedThread.id] = archivedThread
+        }
+
         // Keep local-only threads as-is; a missing entry in thread/list can be
         // caused by server-side pagination or temporary visibility mismatch.
         // We archive only on explicit "thread not found" from thread/read/turn/start.
@@ -229,23 +255,12 @@ extension CodexService {
                 continue
             }
             merged[localThread.id] = localThread
-            if isThreadPinned(localThread.id), !serverThreadIDs.contains(localThread.id) {
-                snapshotOnlyPinnedIDs.insert(localThread.id)
-            }
         }
 
-        snapshotOnlyPinnedIDs.formUnion(injectPinnedSnapshotThreads(
+        snapshotOnlyPinnedThreadIDs = injectPinnedSnapshotThreads(
             into: &merged,
             deletedThreadIDs: persistedDeletedIDs
-        ))
-        snapshotOnlyPinnedThreadIDs = snapshotOnlyPinnedIDs
-
-        // Local rename intent wins over stale thread/list data, especially for pinned snapshots.
-        for threadID in Array(merged.keys) {
-            guard var thread = merged[threadID] else { continue }
-            applyPersistedThreadRename(to: &thread)
-            merged[threadID] = thread
-        }
+        )
 
         threads = sortThreads(Array(merged.values))
         assistantRevertStateCacheByThread.removeAll()
@@ -370,10 +385,8 @@ extension CodexService {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         // Optimistic local update.
         if let index = threadIndex(for: threadId) {
-            var updatedThreads = threads
-            updatedThreads[index].name = trimmedName
-            updatedThreads[index].title = trimmedName
-            threads = updatedThreads
+            threads[index].name = trimmedName
+            threads[index].title = trimmedName
         }
         persistThreadRename(trimmedName, for: threadId)
         debugSyncLog("thread renamed by user: \(threadId) → \(trimmedName)")

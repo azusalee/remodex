@@ -12,7 +12,6 @@ struct TurnConversationContainerView: View {
     let timelineChangeToken: Int
     let activeTurnID: String?
     let isThreadRunning: Bool
-    let isSendInFlight: Bool
     let latestTurnTerminalState: CodexTurnTerminalState?
     let completedTurnIDs: Set<String>
     let stoppedTurnIDs: Set<String>
@@ -32,6 +31,7 @@ struct TurnConversationContainerView: View {
     let isLoadingRemoteEarlierMessages: Bool
     let olderHistoryLoadErrorMessage: String?
     let shouldAnchorToAssistantResponse: Binding<Bool>
+    let isScrolledToBottom: Binding<Bool>
     let isComposerFocused: Bool
     let isComposerAutocompletePresented: Bool
     let emptyState: AnyView
@@ -53,9 +53,16 @@ struct TurnConversationContainerView: View {
     @State private var lastMessageLayoutThreadID: String?
     @State private var lastMessageLayoutToken: Int = -1
 
-    // Body reads only cached layout; `rebuildMessageLayoutIfNeeded` commits updates off-thread.
+    // Falls back to a one-off rebuild during first render, then keeps later renders on cached derived state.
     private var messageLayout: TimelineMessageLayout {
-        cachedMessageLayout
+        guard lastMessageLayoutThreadID == threadID,
+              lastMessageLayoutToken == timelineChangeToken else {
+            return Self.buildMessageLayout(
+                from: messages,
+                planSessionSource: planSessionSource
+            )
+        }
+        return cachedMessageLayout
     }
 
     // Keeps accessory-only chats informative instead of showing a blank viewport.
@@ -94,7 +101,6 @@ struct TurnConversationContainerView: View {
                 timelineChangeToken: timelineChangeToken,
                 activeTurnID: activeTurnID,
                 isThreadRunning: isThreadRunning,
-                isSendInFlight: isSendInFlight,
                 latestTurnTerminalState: latestTurnTerminalState,
                 completedTurnIDs: completedTurnIDs,
                 stoppedTurnIDs: stoppedTurnIDs,
@@ -115,6 +121,7 @@ struct TurnConversationContainerView: View {
                 isLoadingRemoteEarlierMessages: isLoadingRemoteEarlierMessages,
                 olderHistoryLoadErrorMessage: olderHistoryLoadErrorMessage,
                 shouldAnchorToAssistantResponse: shouldAnchorToAssistantResponse,
+                isScrolledToBottom: isScrolledToBottom,
                 isComposerFocused: isComposerFocused,
                 isComposerAutocompletePresented: isComposerAutocompletePresented,
                 onRetryUserMessage: onRetryUserMessage,
@@ -140,13 +147,13 @@ struct TurnConversationContainerView: View {
         .onAppear {
             rebuildMessageLayoutIfNeeded(force: true)
         }
-        .task(id: timelineChangeToken) {
-            rebuildMessageLayoutIfNeeded()
-        }
         .onChange(of: threadID) { _, _ in
             rebuildMessageLayoutIfNeeded(force: true)
         }
-        .onChange(of: cachedMessageLayout.pinnedTaskPlanMessage?.id) { _, newValue in
+        .onChange(of: timelineChangeToken) { _, _ in
+            rebuildMessageLayoutIfNeeded()
+        }
+        .onChange(of: messageLayout.pinnedTaskPlanMessage?.id) { _, newValue in
             if newValue == nil {
                 isShowingPinnedPlanSheet = false
             }
@@ -267,7 +274,7 @@ private struct AccessoryBackedEmptyState: View {
             Spacer()
 
             VStack(spacing: 14) {
-                RemodexIcon.image(systemName: systemImage)
+                Image(systemName: systemImage)
                     .font(AppFont.system(size: 24, weight: .semibold))
                     .foregroundStyle(tint)
                     .frame(width: 56, height: 56)

@@ -1,9 +1,8 @@
 // FILE: CodexMobileApp.swift
-// Purpose: App entry point, RevenueCat setup, and root dependency wiring.
+// Purpose: App entry point and root dependency wiring.
 // Layer: App
 // Exports: CodexMobileApp
 
-import RevenueCat
 import SwiftUI
 
 @MainActor
@@ -14,16 +13,15 @@ struct CodexMobileApp: App {
     @State private var codexService: CodexService
     @State private var petCompanionStore: PetCompanionStore
     @State private var petCompanionStatusStore: PetCompanionStatusStore
-    @State private var subscriptionService: SubscriptionService
+    @State private var accessService: AccessService
 
     init() {
-        Self.configureRevenueCatIfAvailable()
         let service = CodexService()
         service.configureNotifications()
         _codexService = State(initialValue: service)
         _petCompanionStore = State(initialValue: PetCompanionStore())
         _petCompanionStatusStore = State(initialValue: PetCompanionStatusStore())
-        _subscriptionService = State(initialValue: SubscriptionService())
+        _accessService = State(initialValue: AccessService())
     }
 
     var body: some Scene {
@@ -32,9 +30,9 @@ struct CodexMobileApp: App {
                 .environment(codexService)
                 .environment(petCompanionStore)
                 .environment(petCompanionStatusStore)
-                .environment(subscriptionService)
+                .environment(accessService)
                 .task {
-                    await subscriptionService.bootstrap()
+                    await accessService.bootstrap()
                 }
                 .onOpenURL { url in
                     Task { @MainActor in
@@ -54,21 +52,7 @@ struct CodexMobileApp: App {
                 .onChange(of: scenePhase) { _, newPhase in
                     guard newPhase == .background else { return }
                     TurnCacheManager.resetAll()
-                }
+            }
         }
-    }
-
-    // Configures RevenueCat once at launch using the client-safe public SDK key.
-    private static func configureRevenueCatIfAvailable() {
-        guard let apiKey = AppEnvironment.revenueCatPublicAPIKey else {
-            assertionFailure("Missing RevenueCat public API key in Info.plist")
-            return
-        }
-
-        #if DEBUG
-        Purchases.logLevel = .debug
-        #endif
-
-        Purchases.configure(withAPIKey: apiKey)
     }
 }

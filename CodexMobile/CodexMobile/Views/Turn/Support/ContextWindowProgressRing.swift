@@ -12,8 +12,6 @@ struct ContextWindowProgressRing: View {
     let isLoadingRateLimits: Bool
     let rateLimitsErrorMessage: String?
     let shouldAutoRefreshStatus: Bool
-    var showsGlassBackground: Bool = true
-    var progressColorOverride: Color?
     let onRefreshStatus: (() async -> Void)?
     @State private var isShowingPopover = false
     @State private var isRefreshing = false
@@ -45,7 +43,7 @@ struct ContextWindowProgressRing: View {
             }
             .frame(width: ringSize, height: ringSize)
             .frame(width: tapTargetSize, height: tapTargetSize)
-            .modifier(ContextWindowProgressRingChrome(showsGlassBackground: showsGlassBackground))
+            .adaptiveGlass(.regular, in: Circle())
             .contentShape(Circle())
         }
         .buttonStyle(.plain)
@@ -85,10 +83,6 @@ struct ContextWindowProgressRing: View {
     }
 
     private func ringColor(for usage: ContextWindowUsage) -> Color {
-        if let progressColorOverride {
-            return progressColorOverride
-        }
-
         switch usage.fractionUsed {
         case 0.85...: return .primary
         case 0.65..<0.85: return .secondary
@@ -97,18 +91,6 @@ struct ContextWindowProgressRing: View {
     }
 
     // Refreshes both thread context usage and account windows for the compact status popover.
-    private struct ContextWindowProgressRingChrome: ViewModifier {
-        let showsGlassBackground: Bool
-
-        func body(content: Content) -> some View {
-            if showsGlassBackground {
-                content.adaptiveGlass(.regular, in: Circle())
-            } else {
-                content
-            }
-        }
-    }
-
     private func refreshStatus(triggerHaptic: Bool = true) {
         guard !isRefreshing, let onRefreshStatus else { return }
         if triggerHaptic {

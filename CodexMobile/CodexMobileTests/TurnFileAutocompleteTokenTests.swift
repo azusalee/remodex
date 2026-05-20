@@ -45,7 +45,7 @@ final class TurnFileAutocompleteTokenTests: XCTestCase {
     func testTrailingTokenParsesBareLowercaseSearchAfterAt() {
         let token = TurnViewModel.trailingFileAutocompleteToken(in: "paste @remodex")
 
-        XCTAssertEqual(token?.query, "remodex")
+        XCTAssertEqual(token?.query, "Codex")
     }
 
     func testTrailingFileTokenParsesAfterFirstLowercaseLetter() {

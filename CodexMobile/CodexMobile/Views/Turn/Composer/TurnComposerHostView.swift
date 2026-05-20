@@ -38,9 +38,6 @@ struct TurnComposerHostView: View {
     let onTapVoice: () -> Void
     let onCancelVoiceRecording: () -> Void
     let onSend: () -> Void
-    // Pass-through for the New Chat draft surface; defaults to true so every
-    // existing call site keeps its meta bar.
-    var showsSecondaryBar: Bool = true
 
     // ─── ENTRY POINT ─────────────────────────────────────────────
     var body: some View {
@@ -103,10 +100,12 @@ struct TurnComposerHostView: View {
             reasoningDisplayOptions: reasoningDisplayOptions
         )
         let runtimeActions = TurnComposerRuntimeActions.resolve(codex: codex)
-        let selectedModelID = codex.visibleSelectedModelIDForComposer()
-        let isRuntimeSelectionLoading = codex.isRuntimeSelectionLoadingForComposer()
-        let hasComposerWorkingDirectory = thread.gitWorkingDirectory != nil
-            && !SidebarThreadGrouping.isRootlessChatThread(thread)
+        let selectedModelID = codex.selectedModelOption()?.id
+            ?? (codex.hasPersistedSelectedModelId ? codex.selectedModelId : nil)
+        let hasVisibleModelSelection = selectedModelID?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+        // Keep the saved model visible while the bridge refreshes models in the background.
+        let isRuntimeSelectionLoading = !hasVisibleModelSelection
+            && (codex.isBootstrappingConnectionSync || codex.isLoadingThreads || codex.isLoadingModels)
 
         TurnComposerView(
             input: $viewModel.input,
@@ -123,7 +122,7 @@ struct TurnComposerHostView: View {
             activeTurnID: activeTurnID,
             isThreadRunning: isThreadRunning,
             isEmptyThread: isEmptyThread,
-            hasWorkingDirectory: hasComposerWorkingDirectory,
+            hasWorkingDirectory: thread.gitWorkingDirectory != nil,
             isWorktreeProject: isWorktreeProject,
             orderedModelOptions: orderedModelOptions,
             selectedModelID: selectedModelID,
@@ -168,62 +167,44 @@ struct TurnComposerHostView: View {
             onTapVoice: onTapVoice,
             onCancelVoiceRecording: onCancelVoiceRecording,
             onTapCreateWorktree: onOpenWorktreeHandoff,
-            onSetPlanModeArmed: { isArmed in
-                viewModel.setPlanModeArmed(isArmed)
-                viewModel.saveLocalDraft(codex: codex, threadID: thread.id)
-            },
-            onRemoveAttachment: { attachmentID in
-                viewModel.removeComposerAttachment(id: attachmentID)
-                viewModel.saveLocalDraft(codex: codex, threadID: thread.id)
-            },
+            onSetPlanModeArmed: viewModel.setPlanModeArmed,
+            onRemoveAttachment: viewModel.removeComposerAttachment,
             onStopTurn: { turnID in
                 viewModel.interruptTurn(turnID, codex: codex, threadID: thread.id)
             },
-            onInputChanged: TurnComposerInputChangeHandler(
-                handleFileAutocomplete: { text in
-                    viewModel.onInputChangedForFileAutocomplete(
-                        text,
-                        codex: codex,
-                        thread: thread,
-                        activeTurnID: activeTurnID
-                    )
-                },
-                handleSkillAutocomplete: { text in
-                    viewModel.onInputChangedForSkillAutocomplete(
-                        text,
-                        codex: codex,
-                        thread: thread,
-                        activeTurnID: activeTurnID
-                    )
-                },
-                handlePluginAutocomplete: { text in
-                    viewModel.onInputChangedForPluginAutocomplete(
-                        text,
-                        codex: codex,
-                        thread: thread,
-                        activeTurnID: activeTurnID
-                    )
-                },
-                handleSlashCommandAutocomplete: { text in
-                    viewModel.onInputChangedForSlashCommandAutocomplete(
-                        text,
-                        activeTurnID: activeTurnID
-                    )
-                    viewModel.saveLocalDraft(codex: codex, threadID: thread.id)
-                }
-            ),
-            onSelectFileAutocomplete: { item in
-                viewModel.onSelectFileAutocomplete(item)
-                viewModel.saveLocalDraft(codex: codex, threadID: thread.id)
+            onInputChangedForFileAutocomplete: { text in
+                viewModel.onInputChangedForFileAutocomplete(
+                    text,
+                    codex: codex,
+                    thread: thread,
+                    activeTurnID: activeTurnID
+                )
             },
-            onSelectSkillAutocomplete: { skill in
-                viewModel.onSelectSkillAutocomplete(skill)
-                viewModel.saveLocalDraft(codex: codex, threadID: thread.id)
+            onInputChangedForSkillAutocomplete: { text in
+                viewModel.onInputChangedForSkillAutocomplete(
+                    text,
+                    codex: codex,
+                    thread: thread,
+                    activeTurnID: activeTurnID
+                )
             },
-            onSelectPluginAutocomplete: { plugin in
-                viewModel.onSelectPluginAutocomplete(plugin)
-                viewModel.saveLocalDraft(codex: codex, threadID: thread.id)
+            onInputChangedForPluginAutocomplete: { text in
+                viewModel.onInputChangedForPluginAutocomplete(
+                    text,
+                    codex: codex,
+                    thread: thread,
+                    activeTurnID: activeTurnID
+                )
             },
+            onInputChangedForSlashCommandAutocomplete: { text in
+                viewModel.onInputChangedForSlashCommandAutocomplete(
+                    text,
+                    activeTurnID: activeTurnID
+                )
+            },
+            onSelectFileAutocomplete: viewModel.onSelectFileAutocomplete,
+            onSelectSkillAutocomplete: viewModel.onSelectSkillAutocomplete,
+            onSelectPluginAutocomplete: viewModel.onSelectPluginAutocomplete,
             onSelectSlashCommand: { command in
                 switch command {
                 case .codeReview:
@@ -247,7 +228,6 @@ struct TurnComposerHostView: View {
                 case .subagents:
                     viewModel.onSelectSlashCommand(command)
                 }
-                viewModel.saveLocalDraft(codex: codex, threadID: thread.id)
             },
             onSelectCodeReviewTarget: { target in
                 viewModel.prepareForThreadRerouteFromSlashCommand()
@@ -263,35 +243,19 @@ struct TurnComposerHostView: View {
                 }
             },
             onCloseSlashCommandPanel: viewModel.closeSlashCommandPanel,
-            onRemoveMentionedFile: { mentionID in
-                viewModel.removeMentionedFile(id: mentionID)
-                viewModel.saveLocalDraft(codex: codex, threadID: thread.id)
-            },
-            onRemoveMentionedSkill: { mentionID in
-                viewModel.removeMentionedSkill(id: mentionID)
-                viewModel.saveLocalDraft(codex: codex, threadID: thread.id)
-            },
-            onRemoveMentionedPlugin: { mentionID in
-                viewModel.removeMentionedPlugin(id: mentionID)
-                viewModel.saveLocalDraft(codex: codex, threadID: thread.id)
-            },
-            onRemoveComposerReviewSelection: {
-                viewModel.clearComposerReviewSelection()
-                viewModel.saveLocalDraft(codex: codex, threadID: thread.id)
-            },
-            onRemoveComposerSubagentsSelection: {
-                viewModel.clearSubagentsSelection()
-                viewModel.saveLocalDraft(codex: codex, threadID: thread.id)
-            },
+            onRemoveMentionedFile: viewModel.removeMentionedFile,
+            onRemoveMentionedSkill: viewModel.removeMentionedSkill,
+            onRemoveMentionedPlugin: viewModel.removeMentionedPlugin,
+            onRemoveComposerReviewSelection: viewModel.clearComposerReviewSelection,
+            onRemoveComposerSubagentsSelection: viewModel.clearSubagentsSelection,
             onPasteImageData: { imageDataItems in
-                viewModel.enqueuePastedImageData(imageDataItems, codex: codex, threadID: thread.id)
+                viewModel.enqueuePastedImageData(imageDataItems, codex: codex)
             },
             onResumeQueue: {
                 viewModel.resumeQueueAndFlushIfPossible(codex: codex, threadID: thread.id)
             },
             onRestoreQueuedDraft: { draftID in
                 viewModel.restoreQueuedDraftToComposer(id: draftID, codex: codex, threadID: thread.id)
-                viewModel.saveLocalDraft(codex: codex, threadID: thread.id)
             },
             onSteerQueuedDraft: { draftID in
                 viewModel.steerQueuedDraft(id: draftID, codex: codex, threadID: thread.id)
@@ -299,8 +263,7 @@ struct TurnComposerHostView: View {
             onRemoveQueuedDraft: { draftID in
                 viewModel.removeQueuedDraft(id: draftID, codex: codex, threadID: thread.id)
             },
-            onSend: onSend,
-            showsSecondaryBar: showsSecondaryBar
+            onSend: onSend
         )
     }
 }

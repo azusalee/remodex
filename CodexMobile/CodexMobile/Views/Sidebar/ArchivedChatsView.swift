@@ -1,6 +1,6 @@
 // FILE: ArchivedChatsView.swift
-// Purpose: Displays locally archived chats from Settings with unarchive and delete actions.
-// Layer: Settings View
+// Purpose: Displays all archived chats with unarchive and delete actions.
+// Layer: View
 // Exports: ArchivedChatsView
 // Depends on: CodexService, CodexThread
 
@@ -24,7 +24,7 @@ struct ArchivedChatsView: View {
         Group {
             if archivedThreads.isEmpty {
                 VStack(spacing: 12) {
-                    RemodexIcon.image(systemName: "archivebox")
+                    Image(systemName: "archivebox")
                         .font(.system(size: 36))
                         .foregroundStyle(.tertiary)
                     Text("No archived chats")
@@ -90,18 +90,27 @@ struct ArchivedChatsView: View {
             }
         }
         .swipeActions(edge: .leading, allowsFullSwipe: true) {
-            HapticButton(action: { codex.unarchiveThread(thread.id) }) {
-                RemodexIcon.menuLabel("Unarchive", systemName: "tray.and.arrow.up")
+            Button {
+                HapticFeedback.shared.triggerImpactFeedback(style: .light)
+                codex.unarchiveThread(thread.id)
+            } label: {
+                Label("Unarchive", systemImage: "tray.and.arrow.up")
             }
             .tint(.blue)
         }
-        .uiKitContextMenu {
-            SidebarThreadContextMenu(
-                thread: thread,
-                onArchiveToggle: { codex.unarchiveThread(thread.id) },
-                onDelete: { threadPendingDeletion = thread }
-            )
-            .uiMenu()
+        .contextMenu {
+            Button {
+                HapticFeedback.shared.triggerImpactFeedback(style: .light)
+                codex.unarchiveThread(thread.id)
+            } label: {
+                Label("Unarchive", systemImage: "tray.and.arrow.up")
+            }
+
+            Button(role: .destructive) {
+                threadPendingDeletion = thread
+            } label: {
+                Label("Remove from Phone", systemImage: "trash")
+            }
         }
     }
 }

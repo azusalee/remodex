@@ -147,18 +147,6 @@ struct SidebarProjectExpansionSnapshot: Equatable {
 }
 
 enum SidebarProjectExpansionState {
-    static let collapsedProjectGroupIDsStorageKey = "sidebar.collapsedProjectGroupIDs"
-
-    // Extracts project group IDs in one pass for render/state paths that need a Set.
-    static func projectGroupIDs(in groups: [SidebarThreadGroup]) -> Set<String> {
-        var ids = Set<String>()
-        ids.reserveCapacity(groups.count)
-        for group in groups where group.kind == .project {
-            ids.insert(group.id)
-        }
-        return ids
-    }
-
     // Preserves user collapse choices while still auto-opening project groups that appear for the first time.
     // This also applies the persisted closed-state to groups that load late from thread/cwd data.
     static func synchronizedState(
@@ -168,7 +156,11 @@ enum SidebarProjectExpansionState {
         hasInitialized: Bool,
         persistedCollapsedGroupIDs: Set<String> = []
     ) -> SidebarProjectExpansionSnapshot {
-        let visibleGroupIDs = projectGroupIDs(in: visibleGroups)
+        let visibleGroupIDs = Set(
+            visibleGroups
+                .filter { $0.kind == .project }
+                .map(\.id)
+        )
         guard hasInitialized else {
             return SidebarProjectExpansionSnapshot(
                 expandedGroupIDs: visibleGroupIDs.subtracting(persistedCollapsedGroupIDs),
@@ -180,7 +172,6 @@ enum SidebarProjectExpansionState {
         return SidebarProjectExpansionSnapshot(
             expandedGroupIDs: currentExpandedGroupIDs
                 .intersection(visibleGroupIDs)
-                .subtracting(persistedCollapsedGroupIDs)
                 .union(newGroupIDs.subtracting(persistedCollapsedGroupIDs)),
             knownGroupIDs: visibleGroupIDs
         )

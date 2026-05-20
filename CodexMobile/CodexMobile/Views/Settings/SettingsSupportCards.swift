@@ -23,7 +23,7 @@ struct SettingsAboutCard: View {
                 settingsAccessoryRow(
                     title: "How Remodex Works",
                     leading: {
-                        RemodexIcon.image(systemName: "info.circle")
+                        Image(systemName: "info.circle")
                     }
                 )
             }
@@ -53,7 +53,7 @@ struct SettingsAboutCard: View {
                 settingsAccessoryRow(
                     title: "Privacy Policy",
                     leading: {
-                        RemodexIcon.image(systemName: "hand.raised")
+                        Image(systemName: "hand.raised")
                     }
                 )
             }
@@ -65,7 +65,7 @@ struct SettingsAboutCard: View {
                 settingsAccessoryRow(
                     title: "Terms of Use",
                     leading: {
-                        RemodexIcon.image(systemName: "doc.text")
+                        Image(systemName: "doc.text")
                     }
                 )
             }
@@ -86,7 +86,7 @@ struct SettingsAboutCard: View {
                 .frame(width: 22, alignment: .center)
             Text(title)
             Spacer()
-            RemodexIcon.image(systemName: "chevron.right")
+            Image(systemName: "chevron.right")
                 .font(AppFont.caption(weight: .semibold))
                 .foregroundStyle(.tertiary)
         }
@@ -104,7 +104,7 @@ struct SettingsTrustedComputerCard: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 12) {
                 HStack(spacing: 10) {
-                    RemodexIcon.image(systemName: "desktopcomputer")
+                    Image(systemName: "desktopcomputer")
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(.secondary)
                         .frame(width: 32, height: 32)
@@ -129,7 +129,7 @@ struct SettingsTrustedComputerCard: View {
                 Spacer(minLength: 8)
 
                 Button(action: onEditName) {
-                    RemodexIcon.image(systemName: "pencil")
+                    Image(systemName: "pencil")
                         .font(AppFont.caption(weight: .semibold))
                         .foregroundStyle(.secondary)
                         .frame(width: 30, height: 30)

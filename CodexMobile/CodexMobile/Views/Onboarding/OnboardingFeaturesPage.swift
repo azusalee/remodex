@@ -67,7 +67,7 @@ struct OnboardingFeaturesPage: View {
     @ViewBuilder
     private func featureRow(icon: String, color: Color, title: String, subtitle: String) -> some View {
         HStack(spacing: 16) {
-            RemodexIcon.image(systemName: icon)
+            Image(systemName: icon)
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(color)
                 .frame(width: 40, height: 40)

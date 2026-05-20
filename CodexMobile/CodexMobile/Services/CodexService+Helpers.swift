@@ -211,8 +211,7 @@ extension CodexService {
         return normalizedPersistedThreadName(renamedThreadNameByThreadID[normalizedThreadId])
     }
 
-    // Reapplies local rename intent after server refreshes so stale list payloads cannot reset titles.
-    func applyPersistedThreadRename(to thread: inout CodexThread) {
+    private func applyPersistedThreadRename(to thread: inout CodexThread) {
         guard let persistedName = persistedThreadRename(for: thread.id) else {
             return
         }

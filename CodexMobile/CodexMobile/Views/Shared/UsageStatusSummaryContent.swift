@@ -146,7 +146,7 @@ struct UsageStatusSummaryContent: View {
                     ProgressView()
                         .controlSize(.small)
                 } else {
-                    RemodexIcon.image(systemName: "arrow.clockwise")
+                    Image(systemName: "arrow.clockwise")
                         .font(AppFont.system(size: 12, weight: .semibold))
                 }
 
@@ -154,7 +154,6 @@ struct UsageStatusSummaryContent: View {
                     .font(AppFont.subheadline(weight: .semibold))
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
-            .foregroundStyle(.primary)
         }
         .buttonStyle(.plain)
         .disabled(refreshControl.isRefreshing)

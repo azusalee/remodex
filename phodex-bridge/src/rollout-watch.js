@@ -498,11 +498,7 @@ function collectRecentRolloutFiles(
     }
   }
 
-  candidates.sort((lhs, rhs) =>
-    (rhs.mtimeMs - lhs.mtimeMs)
-      || path.basename(rhs.filePath).localeCompare(path.basename(lhs.filePath))
-      || rhs.filePath.localeCompare(lhs.filePath)
-  );
+  candidates.sort((lhs, rhs) => rhs.mtimeMs - lhs.mtimeMs);
   return candidates.slice(0, candidateLimit);
 }
 

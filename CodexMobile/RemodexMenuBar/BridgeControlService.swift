@@ -249,7 +249,7 @@ final class BridgeControlService {
 
     // Resolves both the CLI script and the Node runtime from stable absolute paths before the menu bar invokes them.
     private func resolveCLIInvocation() async throws -> BridgeCLIInvocation {
-        let remodexPath = try await resolveExecutable(named: "remodex")
+        let remodexPath = try await resolveExecutable(named: "Codex")
         let nodePath = try await resolveNodePath(for: remodexPath)
         return BridgeCLIInvocation(nodePath: nodePath, remodexPath: remodexPath)
     }

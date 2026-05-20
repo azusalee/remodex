@@ -2,7 +2,7 @@
 // Purpose: Renders user image attachments in timeline rows and resolves preview images.
 // Layer: Turn UI component
 // Exports: UserAttachmentStrip, AttachmentPreviewImageResolver
-// Depends on: Foundation, SwiftUI, UIKit, CodexImageAttachment, HapticFeedback
+// Depends on: Foundation, SwiftUI, UIKit, CodexImageAttachment, HapticFeedback, TurnTextCacheKey
 
 import Foundation
 import SwiftUI
@@ -32,7 +32,7 @@ private enum UserAttachmentThumbnailCache {
 
     // Thumbnail decoding used to happen from the SwiftUI body on every row redraw.
     private static func cacheKey(for attachment: CodexImageAttachment) -> String {
-        "\(attachment.id)|\(attachment.thumbnailContentFingerprint.cacheKey)"
+        "\(attachment.id)|\(TurnTextCacheKey.stableFingerprint(for: attachment.thumbnailBase64JPEG))"
     }
 }
 
@@ -57,7 +57,7 @@ private struct UserAttachmentThumbnailView: View {
                 .fill(Color(.secondarySystemFill))
                 .frame(width: side, height: side)
                 .overlay(
-                    RemodexIcon.image(systemName: "photo")
+                    Image(systemName: "photo")
                         .foregroundStyle(.secondary)
                 )
                 .overlay(
@@ -88,6 +88,7 @@ struct UserAttachmentStrip: View {
                 .buttonStyle(.plain)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .trailing)
     }
 }
 

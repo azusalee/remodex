@@ -86,6 +86,8 @@ struct TurnGitBranchSelector: View, Equatable {
     @State private var activePickerMode: TurnGitBranchPickerMode?
 
     private let branchLabelColor = Color(.secondaryLabel)
+    private var branchSymbolSize: CGFloat { 16 }
+    private var branchChevronFont: Font { AppFont.system(size: 9, weight: .regular) }
     private var branchControlsDisabled: Bool { !isEnabled || isLoadingGitBranchTargets || isSwitchingGitBranch }
     private var normalizedDefaultBranch: String? {
         let value = defaultBranch.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -147,12 +149,28 @@ struct TurnGitBranchSelector: View, Equatable {
             HapticFeedback.shared.triggerImpactFeedback(style: .light)
             activePickerMode = .currentBranch
         } label: {
-            ComposerPillLabel(
-                title: visibleBranchLabel,
-                iconSystemName: "remodex.git-branch",
-                foregroundColor: branchLabelColor,
-                showsTrailingChevron: false
-            )
+            HStack(spacing: 6) {
+                Image("git-branch")
+                    .renderingMode(.template)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: branchSymbolSize, height: branchSymbolSize)
+
+                Text(visibleBranchLabel)
+                    // Keep the inline label focused on the checked-out branch only.
+                    .font(AppFont.mono(.subheadline))
+                    .fontWeight(.medium)
+                    .lineLimit(1)
+                    .layoutPriority(1)
+
+                Image(systemName: "chevron.down")
+                    .font(branchChevronFont)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .adaptiveGlass(.regular, in: Capsule())
+            .foregroundStyle(branchLabelColor)
+            .contentShape(Capsule())
         }
         .buttonStyle(.plain)
         .disabled(branchControlsDisabled)
@@ -315,11 +333,11 @@ struct TurnGitBranchPickerSheet: View {
                 }
 
                 if orderedBranches.isEmpty {
-                    ContentUnavailableView {
-                        RemodexIcon.label("No branches found", systemName: "arrow.triangle.branch")
-                    } description: {
-                        Text("Try a different search or refresh the branch list.")
-                    }
+                    ContentUnavailableView(
+                        "No branches found",
+                        systemImage: "arrow.triangle.branch",
+                        description: Text("Try a different search or refresh the branch list.")
+                    )
                     .frame(maxWidth: .infinity, alignment: .center)
                     .listRowBackground(Color.clear)
                 }
@@ -419,7 +437,7 @@ private struct TurnGitBranchOptionRow: View {
             Spacer(minLength: 0)
 
             if isSelected {
-                RemodexIcon.image(systemName: "checkmark")
+                Image(systemName: "checkmark")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(isDisabled ? .secondary : .primary)
             }

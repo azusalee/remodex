@@ -30,7 +30,7 @@ struct TurnGitActionToastOverlay: View {
             onDismiss: onDismissSuccess,
             trailingAction: successAction(for: success)
         ) {
-            RemodexIcon.image(systemName: "checkmark.circle.fill")
+            Image(systemName: "checkmark.circle.fill")
                 .font(.system(size: 22, weight: .semibold))
                 .foregroundStyle(.white, Color.green)
                 .symbolRenderingMode(.palette)

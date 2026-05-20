@@ -43,20 +43,19 @@ struct TurnTimelineFooterContainer<Composer: View>: View {
 
     private func scrollToLatestButton(action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            RemodexIcon.image(systemName: "arrow.down")
-                .font(AppFont.system(size: 17, weight: .semibold))
+            Image(systemName: "arrow.down")
+                .font(AppFont.system(size: 13, weight: .semibold))
                 .foregroundStyle(.primary)
-                .frame(width: 37, height: 37)
+                .frame(width: 34, height: 34)
                 .adaptiveGlass(.regular, in: Circle())
         }
-        .frame(width: 47, height: 47)
+        .frame(width: 44, height: 44)
         .buttonStyle(TurnFloatingButtonPressStyle())
         .contentShape(Circle())
         .accessibilityLabel("Scroll to latest message")
         .transition(.opacity.combined(with: .scale(scale: 0.85)))
     }
 }
-
 
 private struct TurnFloatingButtonPressStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {

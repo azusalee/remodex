@@ -50,7 +50,7 @@ struct OnboardingWelcomePage: View {
                         )
 
                     VStack(spacing: 8) {
-                        Text("Remodex")
+                        Text("Codex")
                             .font(AppFont.system(size: 32, weight: .bold))
 
                         Text("Control Codex from your iPhone.")
@@ -59,7 +59,7 @@ struct OnboardingWelcomePage: View {
                     }
 
                     HStack(spacing: 6) {
-                        RemodexIcon.image(systemName: "lock.shield.fill")
+                        Image(systemName: "lock.shield.fill")
                             .font(.system(size: 11, weight: .medium))
                         Text("End-to-end encrypted")
                             .font(AppFont.caption(weight: .medium))

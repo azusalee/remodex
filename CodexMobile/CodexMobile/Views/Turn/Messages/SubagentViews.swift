@@ -70,7 +70,7 @@ struct SubagentActionCard: View {
                 .font(AppFont.caption())
                 .foregroundStyle(.secondary)
 
-            RemodexIcon.image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+            Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                 .font(AppFont.system(size: 10, weight: .medium))
                 .foregroundStyle(.tertiary)
 
@@ -280,7 +280,7 @@ private struct SubagentAgentRowView: View {
 
             if showsDetails, let onShowDetails {
                 Button(action: onShowDetails) {
-                    RemodexIcon.image(systemName: "info.circle")
+                    Image(systemName: "info.circle")
                         .font(AppFont.system(size: 15, weight: .regular))
                         .foregroundStyle(.secondary)
                 }
@@ -314,7 +314,7 @@ private struct SubagentAgentRowView: View {
             }
 
             if onOpen != nil {
-                RemodexIcon.image(systemName: "chevron.right")
+                Image(systemName: "chevron.right")
                     .font(AppFont.system(size: 12, weight: .regular))
                     .foregroundStyle(.tertiary)
             }
@@ -389,7 +389,7 @@ private struct SubagentAgentDetailSheet: View {
                     } label: {
                         HStack(spacing: 8) {
                             Text("Open child thread")
-                            RemodexIcon.image(systemName: "arrow.right")
+                            Image(systemName: "arrow.right")
                         }
                         .font(AppFont.body(weight: .semibold))
                         .frame(maxWidth: .infinity)

@@ -17,7 +17,7 @@ struct CommandExecutionStatusCard: View {
     @State private var unavailableImagePreviewPaths: Set<String> = []
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 8) {
             CommandExecutionCardBody(
                 command: status.command,
                 statusLabel: status.statusLabel,
@@ -84,7 +84,7 @@ struct CommandExecutionStatusCard: View {
                         ProgressView()
                             .controlSize(.small)
                     } else {
-                        RemodexIcon.image(systemName: "photo")
+                        Image(systemName: "photo")
                             .font(AppFont.system(size: 14, weight: .semibold))
                             .foregroundStyle(.secondary)
                     }
@@ -104,7 +104,7 @@ struct CommandExecutionStatusCard: View {
 
                 Spacer(minLength: 0)
 
-                RemodexIcon.image(systemName: "chevron.right")
+                Image(systemName: "chevron.right")
                     .font(AppFont.system(size: 8, weight: .semibold))
                     .foregroundStyle(.quaternary)
             }

@@ -15,7 +15,7 @@ struct PrimaryCapsuleButton: View {
         Button(action: action) {
             HStack(spacing: 10) {
                 if let systemImage, !systemImage.isEmpty {
-                    RemodexIcon.image(systemName: systemImage)
+                    Image(systemName: systemImage)
                         .font(.system(size: 15, weight: .semibold))
                 }
 
